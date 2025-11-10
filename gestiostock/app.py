@@ -1096,6 +1096,20 @@ def update_client(id):
 def fournisseurs():
     return render_template('fournisseurs.html')
 
+
+@app.route('/parametres')
+@login_required
+def parametres_page():
+    """Page des paramètres système (affiche le template parametres.html)"""
+    return render_template('parametres.html')
+
+
+@app.route('/statistiques')
+@login_required
+def statistiques_page():
+    """Page des statistiques (affiche le template statistiques.html)"""
+    return render_template('statistiques.html')
+
 @app.route('/api/fournisseurs', methods=['GET'])
 @login_required
 def get_fournisseurs():

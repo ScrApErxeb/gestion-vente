@@ -29,6 +29,9 @@
             overflow-y: auto;
             z-index: 1000;
             box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.3s;
         }
         
         .sidebar::-webkit-scrollbar {
@@ -47,6 +50,7 @@
             margin-bottom: 30px;
             padding-bottom: 20px;
             border-bottom: 1px solid rgba(255,255,255,0.2);
+            flex-shrink: 0;
         }
         
         .sidebar .logo h2 {
@@ -55,6 +59,12 @@
         
         .sidebar .logo .icon {
             font-size: 32px;
+        }
+        
+        .sidebar nav {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 20px;
         }
         
         .sidebar nav a {
@@ -84,31 +94,37 @@
             font-size: 20px;
             width: 24px;
             text-align: center;
+            flex-shrink: 0;
+        }
+        
+        .sidebar nav a .text {
+            white-space: nowrap;
         }
         
         .sidebar .user-info {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
             padding: 20px;
             background: rgba(0,0,0,0.1);
             border-top: 1px solid rgba(255,255,255,0.2);
+            border-radius: 10px;
+            margin-top: auto;
+            flex-shrink: 0;
         }
         
         .sidebar .user-info .user-name {
             font-weight: 600;
             margin-bottom: 5px;
+            font-size: 14px;
         }
         
         .sidebar .user-info .user-role {
             font-size: 12px;
             opacity: 0.8;
+            margin-bottom: 10px;
         }
         
         .sidebar .user-info .btn-logout {
             margin-top: 10px;
-            padding: 8px 12px;
+            padding: 10px 12px;
             background: rgba(231, 76, 60, 0.8);
             color: white;
             border: none;
@@ -117,16 +133,48 @@
             width: 100%;
             font-size: 13px;
             transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
         }
         
         .sidebar .user-info .btn-logout:hover {
             background: rgba(192, 57, 43, 0.9);
         }
         
+        /* Sidebar réduite sur petits écrans */
+        .sidebar.collapsed {
+            width: 70px;
+            padding: 15px 10px;
+        }
+        
+        .sidebar.collapsed .logo span,
+        .sidebar.collapsed nav a .text,
+        .sidebar.collapsed .user-info .user-name,
+        .sidebar.collapsed .user-info .user-role,
+        .sidebar.collapsed .user-info .btn-logout span {
+            display: none;
+        }
+        
+        .sidebar.collapsed .user-info {
+            padding: 10px;
+        }
+        
+        .sidebar.collapsed nav a {
+            justify-content: center;
+            padding: 12px;
+        }
+        
         .main-content {
             margin-left: 260px;
             padding: 25px;
             min-height: 100vh;
+            transition: margin-left 0.3s;
+        }
+        
+        .main-content.expanded {
+            margin-left: 70px;
         }
         
         .topbar {
@@ -138,10 +186,13 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
         }
         
         .topbar .search-bar {
             flex: 1;
+            min-width: 250px;
             max-width: 400px;
         }
         
@@ -157,6 +208,7 @@
             display: flex;
             gap: 15px;
             align-items: center;
+            flex-wrap: wrap;
         }
         
         .topbar .notification-icon {
@@ -185,6 +237,24 @@
             justify-content: center;
             font-size: 10px;
             font-weight: bold;
+        }
+        
+        .topbar .user-display {
+            font-weight: 600;
+            color: #2c3e50;
+            white-space: nowrap;
+        }
+        
+        .toggle-sidebar {
+            display: none;
+            background: #1abc9c;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 20px;
+            margin-right: 10px;
         }
         
         .header {
@@ -236,6 +306,7 @@
             font-weight: bold;
             color: #1abc9c;
             margin: 12px 0;
+            word-break: break-word;
         }
         
         .stat-card .label {
@@ -255,6 +326,7 @@
             display: inline-flex;
             align-items: center;
             gap: 8px;
+            white-space: nowrap;
         }
         
         .btn-primary {
@@ -345,6 +417,7 @@
             background: rgba(0,0,0,0.6);
             z-index: 2000;
             animation: fadeIn 0.3s;
+            overflow-y: auto;
         }
         
         @keyframes fadeIn {
@@ -504,16 +577,28 @@
             to {transform: rotate(360deg);}
         }
         
-        @media (max-width: 768px) {
+        /* RESPONSIVE - Tablette et mobile */
+        @media (max-width: 1024px) {
             .sidebar {
                 width: 70px;
                 padding: 15px 10px;
             }
             
             .sidebar .logo span,
-            .sidebar nav a span,
-            .sidebar .user-info {
+            .sidebar nav a .text,
+            .sidebar .user-info .user-name,
+            .sidebar .user-info .user-role,
+            .sidebar .user-info .btn-logout span {
                 display: none;
+            }
+            
+            .sidebar .user-info {
+                padding: 10px;
+            }
+            
+            .sidebar nav a {
+                justify-content: center;
+                padding: 12px;
             }
             
             .main-content {
@@ -521,13 +606,57 @@
             }
             
             .stat-cards {
+                grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s;
+            }
+            
+            .sidebar.mobile-open {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .toggle-sidebar {
+                display: block;
+            }
+            
+            .topbar {
+                padding: 15px;
+            }
+            
+            .topbar .search-bar {
+                min-width: 100%;
+                order: 3;
+            }
+            
+            .stat-cards {
                 grid-template-columns: 1fr;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            table {
+                font-size: 12px;
+            }
+            
+            table th, table td {
+                padding: 10px;
             }
         }
     </style>
 </head>
 <body>
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         <div class="logo">
             <div class="icon">🏪</div>
             <span><h2>GestioStock</h2></span>
@@ -536,35 +665,35 @@
         <nav>
             <a href="/" class="{{ 'active' if request.path == '/' else '' }}">
                 <span class="icon">📊</span>
-                <span>Dashboard</span>
+                <span class="text">Dashboard</span>
             </a>
             <a href="/produits" class="{{ 'active' if request.path == '/produits' else '' }}">
                 <span class="icon">📦</span>
-                <span>Produits</span>
+                <span class="text">Produits</span>
             </a>
             <a href="/ventes" class="{{ 'active' if request.path == '/ventes' else '' }}">
                 <span class="icon">🛒</span>
-                <span>Ventes</span>
+                <span class="text">Ventes</span>
             </a>
             <a href="/clients" class="{{ 'active' if request.path == '/clients' else '' }}">
                 <span class="icon">👥</span>
-                <span>Clients</span>
+                <span class="text">Clients</span>
             </a>
             <a href="/fournisseurs" class="{{ 'active' if request.path == '/fournisseurs' else '' }}">
                 <span class="icon">🏭</span>
-                <span>Fournisseurs</span>
+                <span class="text">Fournisseurs</span>
             </a>
             <a href="/commandes" class="{{ 'active' if request.path == '/commandes' else '' }}">
                 <span class="icon">📋</span>
-                <span>Commandes</span>
+                <span class="text">Commandes</span>
             </a>
             <a href="/statistiques" class="{{ 'active' if request.path == '/statistiques' else '' }}">
                 <span class="icon">📈</span>
-                <span>Statistiques</span>
+                <span class="text">Statistiques</span>
             </a>
             <a href="/parametres" class="{{ 'active' if request.path == '/parametres' else '' }}">
                 <span class="icon">⚙️</span>
-                <span>Paramètres</span>
+                <span class="text">Paramètres</span>
             </a>
         </nav>
         
@@ -572,13 +701,14 @@
             <div class="user-name">{{ current_user.prenom }} {{ current_user.nom }}</div>
             <div class="user-role">{{ current_user.role|upper }}</div>
             <button class="btn-logout" onclick="window.location.href='/logout'">
-                🚪 Déconnexion
+                🚪 <span>Déconnexion</span>
             </button>
         </div>
     </div>
     
-    <div class="main-content">
+    <div class="main-content" id="main-content">
         <div class="topbar">
+            <button class="toggle-sidebar" onclick="toggleSidebar()">☰</button>
             <div class="search-bar">
                 <input type="text" placeholder="🔍 Rechercher..." id="global-search">
             </div>
@@ -587,7 +717,7 @@
                     🔔
                     <span class="notification-badge" id="notif-count">0</span>
                 </div>
-                <div style="font-weight: 600; color: #2c3e50;">
+                <div class="user-display">
                     {{ current_user.username }}
                 </div>
             </div>
@@ -597,6 +727,25 @@
     </div>
     
     <script>
+        // Toggle sidebar sur mobile
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('mobile-open');
+        }
+        
+        // Fermer le sidebar si on clique en dehors sur mobile
+        document.addEventListener('click', function(event) {
+            const sidebar = document.getElementById('sidebar');
+            const toggleBtn = document.querySelector('.toggle-sidebar');
+            
+            if (window.innerWidth <= 768 && 
+                !sidebar.contains(event.target) && 
+                !toggleBtn.contains(event.target) &&
+                sidebar.classList.contains('mobile-open')) {
+                sidebar.classList.remove('mobile-open');
+            }
+        });
+        
         // Fonction utilitaire pour formater les montants
         function formatCurrency(amount, devise = 'XOF') {
             const symbols = {

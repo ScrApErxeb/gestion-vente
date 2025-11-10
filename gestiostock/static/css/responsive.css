@@ -1,0 +1,242 @@
+/* Très grands écrans (> 1920px) */
+@media (min-width: 1920px) {
+    .main-content {
+        max-width: 1800px;
+        margin-left: auto;
+        margin-right: auto;
+        padding-left: 280px;
+    }
+    
+    .stat-cards {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+/* Écrans moyens (1024px - 1440px) */
+@media (min-width: 1024px) and (max-width: 1440px) {
+    .sidebar {
+        width: 240px;
+    }
+    
+    .main-content {
+        margin-left: 240px;
+    }
+    
+    .stat-card .value {
+        font-size: 28px;
+    }
+}
+
+/* Tablettes en portrait (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+    .sidebar {
+        width: 70px;
+    }
+    
+    .main-content {
+        margin-left: 70px;
+        padding: 20px;
+    }
+    
+    .topbar {
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    
+    .stat-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+    
+    table {
+        font-size: 13px;
+    }
+    
+    table th, table td {
+        padding: 12px;
+    }
+}
+
+/* Smartphones (< 768px) */
+@media (max-width: 767px) {
+    .sidebar {
+        width: 260px;
+        transform: translateX(-100%);
+        z-index: 2000;
+    }
+    
+    .sidebar.mobile-open {
+        transform: translateX(0);
+        box-shadow: 2px 0 20px rgba(0,0,0,0.3);
+    }
+    
+    .main-content {
+        margin-left: 0;
+        padding: 15px;
+    }
+    
+    .topbar {
+        padding: 12px 15px;
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .topbar .search-bar {
+        max-width: 100%;
+        margin-bottom: 10px;
+    }
+    
+    .topbar .actions {
+        justify-content: space-between;
+    }
+    
+    .header {
+        padding: 20px;
+    }
+    
+    .header h1 {
+        font-size: 24px;
+    }
+    
+    .stat-cards {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .stat-card {
+        padding: 20px;
+    }
+    
+    .stat-card .icon {
+        font-size: 32px;
+    }
+    
+    .stat-card .value {
+        font-size: 26px;
+    }
+    
+    table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+    }
+    
+    .btn {
+        font-size: 13px;
+        padding: 10px 16px;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 20px auto;
+        padding: 20px;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* Très petits écrans (< 375px) */
+@media (max-width: 374px) {
+    .topbar {
+        padding: 10px;
+    }
+    
+    .header {
+        padding: 15px;
+    }
+    
+    .header h1 {
+        font-size: 20px;
+    }
+    
+    .stat-card .value {
+        font-size: 22px;
+    }
+    
+    .btn {
+        font-size: 12px;
+        padding: 8px 12px;
+    }
+}
+
+/* Mode paysage sur mobile */
+@media (max-height: 500px) and (orientation: landscape) {
+    .sidebar {
+        padding: 10px;
+    }
+    
+    .sidebar .logo {
+        margin-bottom: 15px;
+        padding-bottom: 10px;
+    }
+    
+    .sidebar nav a {
+        padding: 10px 12px;
+        margin-bottom: 4px;
+    }
+    
+    .sidebar .user-info {
+        padding: 15px;
+    }
+}
+
+/* Optimisation pour l'impression */
+@media print {
+    .sidebar,
+    .topbar,
+    .btn,
+    .toggle-sidebar {
+        display: none !important;
+    }
+    
+    .main-content {
+        margin-left: 0;
+        padding: 0;
+    }
+    
+    .stat-card {
+        break-inside: avoid;
+    }
+    
+    table {
+        page-break-inside: avoid;
+    }
+}
+
+/* Dark mode (optionnel) */
+@media (prefers-color-scheme: dark) {
+    body {
+        background: #1a1a1a;
+        color: #e0e0e0;
+    }
+    
+    .main-content {
+        background: #1a1a1a;
+    }
+    
+    .header,
+    .stat-card,
+    .topbar,
+    table {
+        background: #2d2d2d;
+        color: #e0e0e0;
+    }
+    
+    table th {
+        background: #16a085;
+    }
+    
+    table td {
+        border-bottom-color: #404040;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        background: #2d2d2d;
+        color: #e0e0e0;
+        border-color: #404040;
+    }
+}

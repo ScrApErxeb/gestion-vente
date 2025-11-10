@@ -1468,7 +1468,11 @@ def stats_ventes():
     ventes_par_cat = db.session.query(
         Categorie.nom,
         func.sum(Vente.montant_total).label('total')
-    ).join(Produit).join(Vente).filter(
+    ).select_from(Categorie).join(
+        Produit, Produit.categorie_id == Categorie.id
+    ).join(
+        Vente, Vente.produit_id == Produit.id
+    ).filter(
         Vente.date_vente >= date_debut,
         Vente.statut == 'confirmée'
     ).group_by(Categorie.id).all()

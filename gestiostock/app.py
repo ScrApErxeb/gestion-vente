@@ -222,37 +222,56 @@ class Client(db.Model):
             'actif': self.actif
         }
 
-class Vente(db.Model):
-    __tablename__ = 'ventes'
+class LigneVente(db.Model):
+    __tablename__ = 'lignes_vente'
     id = db.Column(db.Integer, primary_key=True)
-    numero_facture = db.Column(db.String(50), unique=True, nullable=False)
+    vente_id = db.Column(db.Integer, db.ForeignKey('ventes.id'), nullable=False)
     produit_id = db.Column(db.Integer, db.ForeignKey('produits.id'), nullable=False)
-    client_id = db.Column(db.Integer, db.ForeignKey('clients.id'))
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     quantite = db.Column(db.Integer, nullable=False)
     prix_unitaire = db.Column(db.Float, nullable=False)
     remise = db.Column(db.Float, default=0.0)
     tva = db.Column(db.Float, default=0.0)
     montant_total = db.Column(db.Float, nullable=False)
+    
+    produit = db.relationship('Produit', backref='lignes_vente')
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'produit': self.produit.nom,
+            'quantite': self.quantite,
+            'prix_unitaire': self.prix_unitaire,
+            'remise': self.remise,
+            'tva': self.tva,
+            'montant_total': self.montant_total
+        }
+
+class Vente(db.Model):
+    __tablename__ = 'ventes'
+    id = db.Column(db.Integer, primary_key=True)
+    numero_facture = db.Column(db.String(50), unique=True, nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     devise = db.Column(db.String(10), default='XOF')
     mode_paiement = db.Column(db.String(20), default='espèces')  # espèces, carte, virement, mobile
     date_vente = db.Column(db.DateTime, default=datetime.utcnow)
     date_echeance = db.Column(db.DateTime)
     statut = db.Column(db.String(20), default='confirmée')  # confirmée, annulée, en_attente
     statut_paiement = db.Column(db.String(20), default='payé')  # payé, impayé, partiel
+    remise_globale = db.Column(db.Float, default=0.0)
+    montant_total = db.Column(db.Float, nullable=False)
     notes = db.Column(db.Text)
     
+    lignes = db.relationship('LigneVente', backref='vente', lazy=True, cascade='all, delete-orphan')
     paiements = db.relationship('Paiement', backref='vente', lazy=True)
     
     def to_dict(self):
         return {
             'id': self.id,
             'numero_facture': self.numero_facture,
-            'produit': self.produit.nom,
             'client': f"{self.client.nom} {self.client.prenom}" if self.client else "Client anonyme",
-            'quantite': self.quantite,
-            'prix_unitaire': self.prix_unitaire,
-            'remise': self.remise,
+            'lignes': [ligne.to_dict() for ligne in self.lignes],
+            'remise_globale': self.remise_globale,
             'montant_total': self.montant_total,
             'devise': self.devise,
             'mode_paiement': self.mode_paiement,

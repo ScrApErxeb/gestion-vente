@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Fournisseurs - GestioStock{% endblock %}
+
+{% block content %}
+<div class="header">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h1>🏭 Gestion des Fournisseurs</h1>
+            <p>Gérez vos partenaires fournisseurs</p>
+        </div>
+        <button class="btn btn-primary" onclick="toggleModal('modal-fournisseur')">
+            ➕ Nouveau Fournisseur
+        </button>
+    </div>
+</div>
+
+<!-- Table des fournisseurs -->
+<div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <table id="fournisseurs-table">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Contact</th>
+                <th>Coordonnées</th>
+                <th>Conditions</th>
+                <th>Délai</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<!-- Modal Fournisseur -->
+<div id="modal-fournisseur" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modal-fournisseur-title">Nouveau Fournisseur</h2>
+            <span class="modal-close" onclick="toggleModal('modal-fournisseur')">&times;</span>
+        </div>
+        <form id="form-fournisseur" onsubmit="saveFournisseur(event)">
+            <input type="hidden" id="fournisseur-id">
+            
+            <div class="form-group">
+                <label>Nom du fournisseur *</label>
+                <input type="text" name="nom" id="fournisseur-nom" required>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Personne de contact</label>
+                    <input type="text" name="contact" id="fournisseur-contact">
+                </div>
+                <div class="form-group">
+                    <label>Téléphone *</label>
+                    <input type="tel" name="telephone" id="fournisseur-telephone" required>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" id="fournisseur-email">
+                </div>
+                <div class="form-group">
+                    <label>Site web</label>
+                    <input type="url" name="site_web" id="fournisseur-site">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Adresse</label>
+                <textarea name="adresse" id="fournisseur-adresse" rows="2"></textarea>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ville</label>
+                    <input type="text" name="ville" id="fournisseur-ville" value="Ouagadougou">
+                </div>
+                <div class="form-group">
+                    <label>Pays</label>
+                    <input type="text" name="pays" id="fournisseur-pays" value="Burkina Faso">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Conditions de paiement</label>
+                    <input type="text" name="conditions_paiement" id="fournisseur-conditions" placeholder="Ex: 30 jours">
+                </div>
+                <div class="form-group">
+                    <label>Délai de livraison (jours)</label>
+                    <input type="number" name="delai_livraison" id="fournisseur-delai" min="0">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea name="notes" id="fournisseur-notes" rows="2"></textarea>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 25px;">
+                <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                <button type="button" class="btn btn-secondary" onclick="toggleModal('modal-fournisseur')">❌ Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let fournisseurs = [];
+    
+    async function loadFournisseurs() {
+        try {
+            const response = await fetch('/api/fournisseurs');
+            fournisseurs = await response.json();
+            afficherFournisseurs(fournisseurs);
+        } catch (error) {
+            console.error('Erreur:', error);
+        }
+    }
+    
+    function afficherFournisseurs(data) {
+        const tbody = document.querySelector('#fournisseurs-table tbody');
+        tbody.innerHTML = data.map(f => `
+            <tr>
+                <td><strong>${f.nom}</strong></td>
+                <td>${f.contact || '-'}</td>
+                <td>
+                    📞 ${f.telephone}<br>
+                    📧 ${f.email || '-'}
+                </td>
+                <td>${f.conditions_paiement || '-'}</td>
+                <td>${f.delai_livraison ? f.delai_livraison + ' jours' : '-'}</td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="editFournisseur(${f.id})" title="Modifier">✏️</button>
+                    <button class="btn btn-primary btn-sm" onclick="voirCommandes(${f.id})" title="Commandes">📋</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+    
+    async function saveFournisseur(event) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData);
+        
+        if (data.delai_livraison) data.delai_livraison = parseInt(data.delai_livraison);
+        
+        const id = document.getElementById('fournisseur-id').value;
+        const method = id ? 'PUT' : 'POST';
+        const url = id ? `/api/fournisseurs/${id}` : '/api/fournisseurs';
+        
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                toggleModal('modal-fournisseur');
+                form.reset();
+                loadFournisseurs();
+                alert('✅ Fournisseur enregistré!');
+            }
+        } catch (error) {
+            alert('❌ Erreur de connexion');
+        }
+    }
+    
+    function editFournisseur(id) {
+        const fournisseur = fournisseurs.find(f => f.id === id);
+        if (!fournisseur) return;
+        
+        document.getElementById('modal-fournisseur-title').textContent = 'Modifier le fournisseur';
+        document.getElementById('fournisseur-id').value = fournisseur.id;
+        document.getElementById('fournisseur-nom').value = fournisseur.nom;
+        document.getElementById('fournisseur-contact').value = fournisseur.contact || '';
+        document.getElementById('fournisseur-telephone').value = fournisseur.telephone;
+        document.getElementById('fournisseur-email').value = fournisseur.email || '';
+        document.getElementById('fournisseur-site').value = fournisseur.site_web || '';
+        document.getElementById('fournisseur-adresse').value = fournisseur.adresse || '';
+        document.getElementById('fournisseur-ville').value = fournisseur.ville || '';
+        document.getElementById('fournisseur-conditions').value = fournisseur.conditions_paiement || '';
+        document.getElementById('fournisseur-delai').value = fournisseur.delai_livraison || '';
+        
+        toggleModal('modal-fournisseur');
+    }
+    
+    function voirCommandes(fournisseurId) {
+        window.location.href = `/commandes?fournisseur_id=${fournisseurId}`;
+    }
+    
+    loadFournisseurs();
+</script>
+{% endblock %}

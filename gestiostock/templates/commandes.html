@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+
+{% block title %}Commandes Fournisseurs - GestioStock{% endblock %}
+
+{% block content %}
+<div class="header">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h1>📋 Commandes Fournisseurs</h1>
+            <p>Gérez vos commandes d'approvisionnement</p>
+        </div>
+        <button class="btn btn-primary" onclick="toggleModal('modal-commande')">
+            ➕ Nouvelle Commande
+        </button>
+    </div>
+</div>
+
+<!-- Statistiques commandes -->
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="icon">⏳</div>
+        <div class="label">En attente</div>
+        <div class="value" id="cmd-attente">0</div>
+    </div>
+    <div class="stat-card">
+        <div class="icon">✅</div>
+        <div class="label">Confirmées</div>
+        <div class="value" id="cmd-confirmees">0</div>
+    </div>
+    <div class="stat-card">
+        <div class="icon">📦</div>
+        <div class="label">Reçues</div>
+        <div class="value" id="cmd-recues">0</div>
+    </div>
+    <div class="stat-card">
+        <div class="icon">💰</div>
+        <div class="label">Montant total</div>
+        <div class="value" id="cmd-montant">0 F</div>
+    </div>
+</div>
+
+<!-- Filtres -->
+<div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <div class="form-row">
+        <div class="form-group" style="margin: 0;">
+            <select id="filter-fournisseur" onchange="filtrerCommandes()">
+                <option value="">Tous les fournisseurs</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin: 0;">
+            <select id="filter-statut-cmd" onchange="filtrerCommandes()">
+                <option value="">Tous les statuts</option>
+                <option value="en_attente">En attente</option>
+                <option value="confirmée">Confirmée</option>
+                <option value="reçue">Reçue</option>
+                <option value="annulée">Annulée</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Table des commandes -->
+<div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <table id="commandes-table">
+        <thead>
+            <tr>
+                <th>N° Commande</th>
+                <th>Fournisseur</th>
+                <th>Date commande</th>
+                <th>Livraison prévue</th>
+                <th>Montant</th>
+                <th>Articles</th>
+                <th>Statut</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<!-- Modal Nouvelle Commande -->
+<div id="modal-commande" class="modal">
+    <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-header">
+            <h2>Nouvelle Commande Fournisseur</h2>
+            <span class="modal-close" onclick="toggleModal('modal-commande')">&times;</span>
+        </div>
+        <form id="form-commande" onsubmit="saveCommande(event)">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Fournisseur *</label>
+                    <select name="fournisseur_id" id="cmd-fournisseur" required>
+                        <option value="">Sélectionner...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Date livraison prévue</label>
+                    <input type="date" name="date_livraison_prevue" id="cmd-date-livraison">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Mode de paiement</label>
+                    <select name="mode_paiement" id="cmd-paiement">
+                        <option value="comptant">Comptant</option>
+                        <option value="crédit">À crédit</option>
+                        <option value="virement">Virement</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Devise</label>
+                    <select name="devise" id="cmd-devise">
+                        <option value="XOF">F CFA</option>
+                        <option value="EUR">Euro</option>
+                        <option value="USD">Dollar</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea name="notes" id="cmd-notes" rows="2"></textarea>
+            </div>
+            
+            <hr style="margin: 20px 0;">
+            
+            <h3 style="margin-bottom: 15px;">Articles de la commande</h3>
+            
+            <div id="cmd-items-container">
+                <div class="cmd-item" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 50px; gap: 10px; margin-bottom: 10px; align-items: end;">
+                    <div class="form-group" style="margin: 0;">
+                        <label>Produit</label>
+                        <select class="item-produit" required>
+                            <option value="">Sélectionner...</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Quantité</label>
+                        <input type="number" class="item-quantite" min="1" required onchange="calculerTotalCommande()">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Prix unitaire</label>
+                        <input type="number" class="item-prix" step="0.01" required onchange="calculerTotalCommande()">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                        <label>Total</label>
+                        <input type="text" class="item-total" readonly style="background: #f8f9fa;">
+                    </div>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="retirerItem(this)" style="height: 42px;">❌</button>
+                </div>
+            </div>
+            
+            <button type="button" class="btn btn-secondary" onclick="ajouterItem()" style="margin-top: 10px;">
+                ➕ Ajouter un article
+            </button>
+            
+            <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 18px; font-weight: 600; color: #2c3e50;">TOTAL COMMANDE:</span>
+                    <span style="font-size: 24px; font-weight: bold; color: #1abc9c;" id="cmd-total-final">0 F CFA</span>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-primary">📦 Créer la commande</button>
+                <button type="button" class="btn btn-secondary" onclick="toggleModal('modal-commande')">❌ Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Réception Commande -->
+<div id="modal-reception" class="modal">
+    <div class="modal-content" style="max-width: 700px;">
+        <div class="modal-header">
+            <h2>Réceptionner la commande</h2>
+            <span class="modal-close" onclick="toggleModal('modal-reception')">&times;</span>
+        </div>
+        <div id="reception-content"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let commandes = [];
+    let produits = [];
+    
+    async function loadCommandes() {
+        try {
+            const fournisseurId = document.getElementById('filter-fournisseur').value;
+            const statut = document.getElementById('filter-statut-cmd').value;
+            
+            let url = '/api/commandes?';
+            if (fournisseurId) url += `fournisseur_id=${fournisseurId}&`;
+            if (statut) url += `statut=${statut}&`;
+            
+            const response = await fetch(url);
+            commandes = await response.json();
+            
+            afficherCommandes(commandes);
+            calculerStats(commandes);
+        } catch (error) {
+            console.error('Erreur:', error);
+        }
+    }
+    
+    function afficherCommandes(data) {
+        const tbody = document.querySelector('#commandes-table tbody');
+        tbody.innerHTML = data.map(c => {
+            const statutColor = {
+                'en_attente': 'warning',
+                'confirmée': 'info',
+                'reçue': 'success',
+                'annulée': 'danger'
+            };
+            
+            return `
+                <tr>
+                    <td><strong>${c.numero_commande}</strong></td>
+                    <td>${c.fournisseur}</td>
+                    <td>${c.date_commande}</td>
+                    <td>${c.date_livraison_prevue || '-'}</td>
+                    <td><strong>${formatCurrency(c.montant_total, c.devise)}</strong></td>
+                    <td>${c.nb_items} article(s)</td>
+                    <td><span class="badge badge-${statutColor[c.statut]}">${c.statut.toUpperCase()}</span></td>
+                    <td>
+                        ${c.statut !== 'reçue' && c.statut !== 'annulée' ? 
+                            `<button class="btn btn-success btn-sm" onclick="recevoirCommande(${c.id})" title="Réceptionner">📦</button>` : 
+                            ''}
+                        <button class="btn btn-primary btn-sm" onclick="voirDetails(${c.id})" title="Détails">👁️</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+    
+    function calculerStats(data) {
+        const stats = {
+            en_attente: data.filter(c => c.statut === 'en_attente').length,
+            confirmées: data.filter(c => c.statut === 'confirmée').length,
+            reçues: data.filter(c => c.statut === 'reçue').length,
+            montant: data.filter(c => c.statut !== 'annulée').reduce((sum, c) => sum + c.montant_total, 0)
+        };
+        
+        document.getElementById('cmd-attente').textContent = stats.en_attente;
+        document.getElementById('cmd-confirmees').textContent = stats.confirmées;
+        document.getElementById('cmd-recues').textContent = stats.reçues;
+        document.getElementById('cmd-montant').textContent = formatCurrency(stats.montant);
+    }
+    
+    async function loadFournisseurs() {
+        const response = await fetch('/api/fournisseurs');
+        const fournisseurs = await response.json();
+        
+        const selects = ['filter-fournisseur', 'cmd-fournisseur'];
+        selects.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            const defaultOption = selectId === 'filter-fournisseur' ? 
+                '<option value="">Tous les fournisseurs</option>' : 
+                '<option value="">Sélectionner...</option>';
+            select.innerHTML = defaultOption +
+                fournisseurs.map(f => `<option value="${f.id}">${f.nom}</option>`).join('');
+        });
+    }
+    
+    async function loadProduits() {
+        const response = await fetch('/api/produits');
+        produits = await response.json();
+        updateProduitsSelects();
+    }
+    
+    function updateProduitsSelects() {
+        const selects = document.querySelectorAll('.item-produit');
+        const options = '<option value="">Sélectionner...</option>' +
+            produits.map(p => `<option value="${p.id}" data-prix="${p.prix_achat}">${p.nom}</option>`).join('');
+        
+        selects.forEach(select => {
+            select.innerHTML = options;
+        });
+    }
+    
+    function ajouterItem() {
+        const container = document.getElementById('cmd-items-container');
+        const itemHTML = `
+            <div class="cmd-item" style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 50px; gap: 10px; margin-bottom: 10px; align-items: end;">
+                <div class="form-group" style="margin: 0;">
+                    <select class="item-produit" required>
+                        <option value="">Sélectionner...</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <input type="number" class="item-quantite" min="1" required onchange="calculerTotalCommande()">
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <input type="number" class="item-prix" step="0.01" required onchange="calculerTotalCommande()">
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <input type="text" class="item-total" readonly style="background: #f8f9fa;">
+                </div>
+                <button type="button" class="btn btn-danger btn-sm" onclick="retirerItem(this)" style="height: 42px;">❌</button>
+            </div>
+        `;
+        container.insertAdjacentHTML('beforeend', itemHTML);
+        updateProduitsSelects();
+    }
+    
+    function retirerItem(btn) {
+        const items = document.querySelectorAll('.cmd-item');
+        if (items.length > 1) {
+            btn.closest('.cmd-item').remove();
+            calculerTotalCommande();
+        } else {
+            alert('Au moins un article est requis');
+        }
+    }
+    
+    function calculerTotalCommande() {
+        const items = document.querySelectorAll('.cmd-item');
+        let total = 0;
+        
+        items.forEach(item => {
+            const quantite = parseFloat(item.querySelector('.item-quantite').value) || 0;
+            const prix = parseFloat(item.querySelector('.item-prix').value) || 0;
+            const sousTotal = quantite * prix;
+            
+            item.querySelector('.item-total').value = formatCurrency(sousTotal);
+            total += sousTotal;
+        });
+        
+        document.getElementById('cmd-total-final').textContent = formatCurrency(total);
+    }
+    
+    async function saveCommande(event) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData);
+        
+        // Récupérer les items
+        const items = [];
+        document.querySelectorAll('.cmd-item').forEach(item => {
+            const produitId = item.querySelector('.item-produit').value;
+            const quantite = item.querySelector('.item-quantite').value;
+            const prixUnitaire = item.querySelector('.item-prix').value;
+            
+            if (produitId && quantite && prixUnitaire) {
+                items.push({
+                    produit_id: parseInt(produitId),
+                    quantite: parseInt(quantite),
+                    prix_unitaire: parseFloat(prixUnitaire)
+                });
+            }
+        });
+        
+        if (items.length === 0) {
+            alert('Ajoutez au moins un article');
+            return;
+        }
+        
+        data.fournisseur_id = parseInt(data.fournisseur_id);
+        data.items = items;
+        
+        try {
+            const response = await fetch('/api/commandes', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                toggleModal('modal-commande');
+                form.reset();
+                document.getElementById('cmd-items-container').innerHTML = '';
+                ajouterItem();
+                loadCommandes();
+                alert('✅ Commande créée avec succès!');
+            } else {
+                const error = await response.json();
+                alert('❌ Erreur: ' + (error.error || 'Erreur inconnue'));
+            }
+        } catch (error) {
+            alert('❌ Erreur de connexion');
+        }
+    }
+    
+    async function recevoirCommande(commandeId) {
+        // Implémenter la réception de commande
+        const commande = commandes.find(c => c.id === commandeId);
+        if (!commande) return;
+        
+        if (confirm(`Confirmer la réception de la commande ${commande.numero_commande} ?`)) {
+            try {
+                const response = await fetch(`/api/commandes/${commandeId}/recevoir`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({items: []}) // À implémenter avec les quantités reçues
+                });
+                
+                if (response.ok) {
+                    loadCommandes();
+                    alert('✅ Commande réceptionnée! Les stocks ont été mis à jour.');
+                }
+            } catch (error) {
+                alert('❌ Erreur');
+            }
+        }
+    }
+    
+    function voirDetails(commandeId) {
+        const commande = commandes.find(c => c.id === commandeId);
+        if (commande) {
+            alert(`Détails commande\n\nN°: ${commande.numero_commande}\nFournisseur: ${commande.fournisseur}\nMontant: ${formatCurrency(commande.montant_total, commande.devise)}`);
+        }
+    }
+    
+    function filtrerCommandes() {
+        loadCommandes();
+    }
+    
+    // Initialisation
+    loadCommandes();
+    loadFournisseurs();
+    loadProduits();
+    ajouterItem();
+</script>
+{% endblock %}

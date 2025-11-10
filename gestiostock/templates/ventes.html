@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+
+{% block title %}Ventes - GestioStock{% endblock %}
+
+{% block content %}
+<div class="header">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h1>🛒 Gestion des Ventes</h1>
+            <p>Enregistrer et suivre vos ventes</p>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="exporterVentes()">
+                📥 Exporter Excel
+            </button>
+            <button class="btn btn-primary" onclick="toggleModal('modal-vente')">
+                ➕ Nouvelle Vente
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Statistiques rapides -->
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="icon">💰</div>
+        <div class="label">CA Aujourd'hui</div>
+        <div class="value" id="ca-jour">0 F</div>
+    </div>
+    <div class="stat-card">
+        <div class="icon">🛍️</div>
+        <div class="label">Ventes aujourd'hui</div>
+        <div class="value" id="nb-ventes-jour">0</div>
+    </div>
+    <div class="stat-card">
+        <div class="icon">📦</div>
+        <div class="label">Articles vendus</div>
+        <div class="value" id="articles-vendus">0</div>
+    </div>
+</div>
+
+<!-- Filtres -->
+<div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <div class="form-row">
+        <div class="form-group" style="margin: 0;">
+            <input type="date" id="filter-date-debut" onchange="filtrerVentes()">
+        </div>
+        <div class="form-group" style="margin: 0;">
+            <input type="date" id="filter-date-fin" onchange="filtrerVentes()">
+        </div>
+        <div class="form-group" style="margin: 0;">
+            <select id="filter-client" onchange="filtrerVentes()">
+                <option value="">Tous les clients</option>
+            </select>
+        </div>
+        <div class="form-group" style="margin: 0;">
+            <select id="filter-statut" onchange="filtrerVentes()">
+                <option value="">Tous les statuts</option>
+                <option value="confirmée">Confirmée</option>
+                <option value="annulée">Annulée</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Table des ventes -->
+<div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <table id="ventes-table">
+        <thead>
+            <tr>
+                <th>N° Facture</th>
+                <th>Date</th>
+                <th>Client</th>
+                <th>Produit</th>
+                <th>Quantité</th>
+                <th>Montant</th>
+                <th>Paiement</th>
+                <th>Statut</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<!-- Modal Nouvelle Vente -->
+<div id="modal-vente" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Nouvelle Vente</h2>
+            <span class="modal-close" onclick="toggleModal('modal-vente')">&times;</span>
+        </div>
+        <form id="form-vente" onsubmit="saveVente(event)">
+            <div class="form-group">
+                <label>Client</label>
+                <select name="client_id" id="vente-client">
+                    <option value="">Client anonyme</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Produit *</label>
+                <select name="produit_id" id="vente-produit" required onchange="updatePrixVente()">
+                    <option value="">Sélectionner un produit</option>
+                </select>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Quantité *</label>
+                    <input type="number" name="quantite" id="vente-quantite" required min="1" onchange="calculerTotal()">
+                </div>
+                <div class="form-group">
+                    <label>Prix unitaire</label>
+                    <input type="number" name="prix_unitaire" id="vente-prix" step="0.01" readonly>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Remise (%)</label>
+                    <input type="number" name="remise" id="vente-remise" step="0.01" value="0" min="0" max="100" onchange="calculerTotal()">
+                </div>
+                <div class="form-group">
+                    <label>Mode de paiement</label>
+                    <select name="mode_paiement" id="vente-paiement">
+                        <option value="espèces">Espèces</option>
+                        <option value="carte">Carte bancaire</option>
+                        <option value="mobile">Mobile Money</option>
+                        <option value="virement">Virement</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Devise</label>
+                <select name="devise" id="vente-devise">
+                    <option value="XOF">F CFA (XOF)</option>
+                    <option value="EUR">Euro (EUR)</option>
+                    <option value="USD">Dollar (USD)</option>
+                    <option value="GBP">Livre Sterling (GBP)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea name="notes" id="vente-notes" rows="2"></textarea>
+            </div>
+            
+            <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 18px; font-weight: 600; color: #2c3e50;">TOTAL À PAYER:</span>
+                    <span style="font-size: 24px; font-weight: bold; color: #1abc9c;" id="vente-total">0 F CFA</span>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn btn-primary">💰 Enregistrer la vente</button>
+                <button type="button" class="btn btn-secondary" onclick="toggleModal('modal-vente')">❌ Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let ventes = [];
+    let produits = [];
+    
+    async function loadVentes() {
+        try {
+            const dateDebut = document.getElementById('filter-date-debut').value;
+            const dateFin = document.getElementById('filter-date-fin').value;
+            const clientId = document.getElementById('filter-client').value;
+            const statut = document.getElementById('filter-statut').value;
+            
+            let url = '/api/ventes?';
+            if (dateDebut) url += `date_debut=${dateDebut}&`;
+            if (dateFin) url += `date_fin=${dateFin}&`;
+            if (clientId) url += `client_id=${clientId}&`;
+            if (statut) url += `statut=${statut}&`;
+            
+            const response = await fetch(url);
+            ventes = await response.json();
+            
+            afficherVentes(ventes);
+            calculerStats(ventes);
+        } catch (error) {
+            console.error('Erreur:', error);
+        }
+    }
+    
+    function afficherVentes(data) {
+        const tbody = document.querySelector('#ventes-table tbody');
+        tbody.innerHTML = data.map(v => `
+            <tr>
+                <td><strong>${v.numero_facture}</strong></td>
+                <td>${v.date_vente}</td>
+                <td>${v.client}</td>
+                <td>${v.produit}</td>
+                <td>${v.quantite}</td>
+                <td><strong>${formatCurrency(v.montant_total, v.devise)}</strong></td>
+                <td><span class="badge badge-info">${v.mode_paiement}</span></td>
+                <td>
+                    ${v.statut === 'confirmée' ? 
+                        '<span class="badge badge-success">✅ Confirmée</span>' : 
+                        '<span class="badge badge-danger">❌ Annulée</span>'}
+                </td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="telechargerFacture(${v.id})" title="Télécharger PDF">📄</button>
+                    <button class="btn btn-primary btn-sm" onclick="voirDetails(${v.id})" title="Détails">👁️</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+    
+    function calculerStats(data) {
+        const today = new Date().toISOString().split('T')[0];
+        const ventesJour = data.filter(v => v.date_vente.startsWith(today) && v.statut === 'confirmée');
+        
+        const caJour = ventesJour.reduce((sum, v) => sum + v.montant_total, 0);
+        const nbVentes = ventesJour.length;
+        const articlesVendus = ventesJour.reduce((sum, v) => sum + v.quantite, 0);
+        
+        document.getElementById('ca-jour').textContent = formatCurrency(caJour);
+        document.getElementById('nb-ventes-jour').textContent = nbVentes;
+        document.getElementById('articles-vendus').textContent = articlesVendus;
+    }
+    
+    async function loadClients() {
+        const response = await fetch('/api/clients');
+        const clients = await response.json();
+        
+        const selects = ['filter-client', 'vente-client'];
+        selects.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            const defaultOption = selectId === 'filter-client' ? 
+                '<option value="">Tous les clients</option>' : 
+                '<option value="">Client anonyme</option>';
+            select.innerHTML = defaultOption +
+                clients.map(c => `<option value="${c.id}">${c.nom} ${c.prenom || ''}</option>`).join('');
+        });
+    }
+    
+    async function loadProduits() {
+        const response = await fetch('/api/produits');
+        produits = await response.json();
+        
+        const select = document.getElementById('vente-produit');
+        select.innerHTML = '<option value="">Sélectionner un produit</option>' +
+            produits.filter(p => p.stock_actuel > 0).map(p => 
+                `<option value="${p.id}" data-prix="${p.prix_vente}" data-stock="${p.stock_actuel}">
+                    ${p.nom} - Stock: ${p.stock_actuel}
+                </option>`
+            ).join('');
+    }
+    
+    function updatePrixVente() {
+        const select = document.getElementById('vente-produit');
+        const option = select.options[select.selectedIndex];
+        const prix = option.getAttribute('data-prix');
+        
+        document.getElementById('vente-prix').value = prix || 0;
+        calculerTotal();
+    }
+    
+    function calculerTotal() {
+        const quantite = parseFloat(document.getElementById('vente-quantite').value) || 0;
+        const prix = parseFloat(document.getElementById('vente-prix').value) || 0;
+        const remise = parseFloat(document.getElementById('vente-remise').value) || 0;
+        
+        const sousTotal = quantite * prix;
+        const montantRemise = sousTotal * (remise / 100);
+        const total = sousTotal - montantRemise;
+        
+        document.getElementById('vente-total').textContent = formatCurrency(total);
+    }
+    
+    async function saveVente(event) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData);
+        
+        // Convertir les nombres
+        ['quantite', 'remise'].forEach(key => {
+            if (data[key]) data[key] = parseFloat(data[key]);
+        });
+        ['produit_id', 'client_id'].forEach(key => {
+            if (data[key]) data[key] = parseInt(data[key]) || null;
+        });
+        
+        try {
+            const response = await fetch('/api/ventes', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                toggleModal('modal-vente');
+                form.reset();
+                loadVentes();
+                alert('✅ Vente enregistrée avec succès!');
+            } else {
+                const error = await response.json();
+                alert('❌ Erreur: ' + (error.error || 'Erreur inconnue'));
+            }
+        } catch (error) {
+            alert('❌ Erreur de connexion');
+        }
+    }
+    
+    function filtrerVentes() {
+        loadVentes();
+    }
+    
+    async function telechargerFacture(venteId) {
+        window.location.href = `/api/export/facture/${venteId}`;
+    }
+    
+    function voirDetails(venteId) {
+        const vente = ventes.find(v => v.id === venteId);
+        if (vente) {
+            alert(`Détails de la vente\n\nFacture: ${vente.numero_facture}\nClient: ${vente.client}\nProduit: ${vente.produit}\nMontant: ${formatCurrency(vente.montant_total, vente.devise)}`);
+        }
+    }
+    
+    async function exporterVentes() {
+        const dateDebut = document.getElementById('filter-date-debut').value;
+        const dateFin = document.getElementById('filter-date-fin').value;
+        let url = '/api/export/ventes/excel?';
+        if (dateDebut) url += `date_debut=${dateDebut}&`;
+        if (dateFin) url += `date_fin=${dateFin}`;
+        window.location.href = url;
+    }
+    
+    // Initialisation
+    loadVentes();
+    loadClients();
+    loadProduits();
+    
+    // Définir la date d'aujourd'hui par défaut
+    document.getElementById('filter-date-debut').valueAsDate = new Date();
+    document.getElementById('filter-date-fin').valueAsDate = new Date();
+</script>
+{% endblock %}

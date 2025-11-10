@@ -1,0 +1,1984 @@
+"""
+GestioStock - Système de Gestion de Stock Complet
+Version Pro avec toutes les fonctionnalités avancées
+"""
+
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file, flash
+from flask_sqlalchemy import SQLAlchemy
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta
+from sqlalchemy import func, and_, or_, extract
+import os
+import io
+import json
+from decimal import Decimal
+
+# Imports pour export PDF/Excel
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill
+
+# Configuration de l'application
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'votre-cle-secrete-super-securisee-2024'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///gestiostock_pro.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# Configuration multi-devises
+app.config['CURRENCIES'] = {
+    'XOF': {'symbol': 'F CFA', 'rate': 1.0, 'name': 'Franc CFA'},
+    'EUR': {'symbol': '€', 'rate': 656.0, 'name': 'Euro'},
+    'USD': {'symbol': '$', 'rate': 610.0, 'name': 'Dollar US'},
+    'GBP': {'symbol': '£', 'rate': 765.0, 'name': 'Livre Sterling'}
+}
+app.config['DEFAULT_CURRENCY'] = 'XOF'
+
+# Configuration Email/SMS (à configurer selon votre fournisseur)
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USERNAME'] = 'votre-email@gmail.com'
+app.config['MAIL_PASSWORD'] = 'votre-mot-de-passe'
+app.config['SMS_API_KEY'] = 'votre-cle-api-sms'
+app.config['SMS_SENDER'] = 'GestioStock'
+
+db = SQLAlchemy(app)
+login_manager = LoginManager(app)
+login_manager.login_view = 'login'
+
+# ==================== MODÈLES ====================
+
+class User(UserMixin, db.Model):
+    __tablename__ = 'users'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    nom = db.Column(db.String(100))
+    prenom = db.Column(db.String(100))
+    role = db.Column(db.String(20), default='user')  # admin, manager, user
+    telephone = db.Column(db.String(20))
+    actif = db.Column(db.Boolean, default=True)
+    date_creation = db.Column(db.DateTime, default=datetime.utcnow)
+    dernier_login = db.Column(db.DateTime)
+    preferences = db.Column(db.Text)  # JSON pour préférences (devise, langue, etc.)
+    
+    ventes = db.relationship('Vente', backref='utilisateur', lazy=True, foreign_keys='Vente.user_id')
+    commandes = db.relationship('Commande', backref='utilisateur', lazy=True)
+    
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'nom': self.nom,
+            'prenom': self.prenom,
+            'role': self.role,
+            'telephone': self.telephone,
+            'actif': self.actif
+        }
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+class Categorie(db.Model):
+    __tablename__ = 'categories'
+    id = db.Column(db.Integer, primary_key=True)
+    nom = db.Column(db.String(100), nullable=False, unique=True)
+    description = db.Column(db.Text)
+    image_url = db.Column(db.String(255))
+    parent_id = db.Column(db.Integer, db.ForeignKey('categories.id'))
+    actif = db.Column(db.Boolean, default=True)
+    
+    produits = db.relationship('Produit', backref='categorie', lazy=True)
+    sous_categories = db.relationship('Categorie', backref=db.backref('parent', remote_side=[id]))
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nom': self.nom,
+            'description': self.description,
+            'nb_produits': len(self.produits),
+            'actif': self.actif
+        }
+
+class Produit(db.Model):
+    __tablename__ = 'produits'
+    id = db.Column(db.Integer, primary_key=True)
+    nom = db.Column(db.String(200), nullable=False)
+    reference = db.Column(db.String(50), unique=True, nullable=False)
+    code_barre = db.Column(db.String(100), unique=True)
+    description = db.Column(db.Text)
+    prix_achat = db.Column(db.Float, nullable=False)
+    prix_vente = db.Column(db.Float, nullable=False)
+    tva = db.Column(db.Float, default=0.0)
+    stock_actuel = db.Column(db.Integer, default=0)
+    stock_min = db.Column(db.Integer, default=0)
+    stock_max = db.Column(db.Integer, default=1000)
+    categorie_id = db.Column(db.Integer, db.ForeignKey('categories.id'))
+    fournisseur_id = db.Column(db.Integer, db.ForeignKey('fournisseurs.id'))
+    image_url = db.Column(db.String(255))
+    poids = db.Column(db.Float)
+    unite_mesure = db.Column(db.String(20), default='unité')
+    emplacement = db.Column(db.String(100))
+    date_creation = db.Column(db.DateTime, default=datetime.utcnow)
+    actif = db.Column(db.Boolean, default=True)
+    
+    ventes = db.relationship('Vente', backref='produit', lazy=True)
+    mouvements = db.relationship('MouvementStock', backref='produit', lazy=True)
+    commande_items = db.relationship('CommandeItem', backref='produit', lazy=True)
+    
+    @property
+    def stock_faible(self):
+        return self.stock_actuel <= self.stock_min
+    
+    @property
+    def marge_benefice(self):
+        return ((self.prix_vente - self.prix_achat) / self.prix_achat * 100) if self.prix_achat > 0 else 0
+    
+    @property
+    def valeur_stock(self):
+        return self.stock_actuel * self.prix_achat
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nom': self.nom,
+            'reference': self.reference,
+            'code_barre': self.code_barre,
+            'description': self.description,
+            'prix_achat': self.prix_achat,
+            'prix_vente': self.prix_vente,
+            'tva': self.tva,
+            'stock_actuel': self.stock_actuel,
+            'stock_min': self.stock_min,
+            'stock_max': self.stock_max,
+            'categorie': self.categorie.nom if self.categorie else None,
+            'fournisseur': self.fournisseur.nom if self.fournisseur else None,
+            'stock_faible': self.stock_faible,
+            'marge_benefice': round(self.marge_benefice, 2),
+            'valeur_stock': self.valeur_stock,
+            'unite_mesure': self.unite_mesure,
+            'actif': self.actif
+        }
+
+class Client(db.Model):
+    __tablename__ = 'clients'
+    id = db.Column(db.Integer, primary_key=True)
+    nom = db.Column(db.String(100), nullable=False)
+    prenom = db.Column(db.String(100))
+    entreprise = db.Column(db.String(200))
+    email = db.Column(db.String(120), unique=True)
+    telephone = db.Column(db.String(20))
+    telephone2 = db.Column(db.String(20))
+    adresse = db.Column(db.Text)
+    ville = db.Column(db.String(100))
+    pays = db.Column(db.String(100), default='Burkina Faso')
+    code_postal = db.Column(db.String(20))
+    type_client = db.Column(db.String(20), default='particulier')  # particulier, professionnel
+    num_contribuable = db.Column(db.String(50))
+    remise_defaut = db.Column(db.Float, default=0.0)
+    plafond_credit = db.Column(db.Float, default=0.0)
+    devise_preferee = db.Column(db.String(10), default='XOF')
+    notes = db.Column(db.Text)
+    date_creation = db.Column(db.DateTime, default=datetime.utcnow)
+    actif = db.Column(db.Boolean, default=True)
+    
+    ventes = db.relationship('Vente', backref='client', lazy=True)
+    
+    @property
+    def total_achats(self):
+        return sum(v.montant_total for v in self.ventes if v.statut == 'confirmée')
+    
+    @property
+    def nombre_achats(self):
+        return len([v for v in self.ventes if v.statut == 'confirmée'])
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nom': self.nom,
+            'prenom': self.prenom,
+            'entreprise': self.entreprise,
+            'email': self.email,
+            'telephone': self.telephone,
+            'adresse': self.adresse,
+            'ville': self.ville,
+            'type_client': self.type_client,
+            'remise_defaut': self.remise_defaut,
+            'total_achats': self.total_achats,
+            'nombre_achats': self.nombre_achats,
+            'actif': self.actif
+        }
+
+class Vente(db.Model):
+    __tablename__ = 'ventes'
+    id = db.Column(db.Integer, primary_key=True)
+    numero_facture = db.Column(db.String(50), unique=True, nullable=False)
+    produit_id = db.Column(db.Integer, db.ForeignKey('produits.id'), nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey('clients.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    quantite = db.Column(db.Integer, nullable=False)
+    prix_unitaire = db.Column(db.Float, nullable=False)
+    remise = db.Column(db.Float, default=0.0)
+    tva = db.Column(db.Float, default=0.0)
+    montant_total = db.Column(db.Float, nullable=False)
+    devise = db.Column(db.String(10), default='XOF')
+    mode_paiement = db.Column(db.String(20), default='espèces')  # espèces, carte, virement, mobile
+    date_vente = db.Column(db.DateTime, default=datetime.utcnow)
+    date_echeance = db.Column(db.DateTime)
+    statut = db.Column(db.String(20), default='confirmée')  # confirmée, annulée, en_attente
+    statut_paiement = db.Column(db.String(20), default='payé')  # payé, impayé, partiel
+    notes = db.Column(db.Text)
+    
+    paiements = db.relationship('Paiement', backref='vente', lazy=True)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'numero_facture': self.numero_facture,
+            'produit': self.produit.nom,
+            'client': f"{self.client.nom} {self.client.prenom}" if self.client else "Client anonyme",
+            'quantite': self.quantite,
+            'prix_unitaire': self.prix_unitaire,
+            'remise': self.remise,
+            'montant_total': self.montant_total,
+            'devise': self.devise,
+            'mode_paiement': self.mode_paiement,
+            'date_vente': self.date_vente.strftime('%Y-%m-%d %H:%M'),
+            'statut': self.statut,
+            'statut_paiement': self.statut_paiement
+        }
+
+class Paiement(db.Model):
+    __tablename__ = 'paiements'
+    id = db.Column(db.Integer, primary_key=True)
+    vente_id = db.Column(db.Integer, db.ForeignKey('ventes.id'))
+    commande_id = db.Column(db.Integer, db.ForeignKey('commandes.id'))
+    montant = db.Column(db.Float, nullable=False)
+    mode_paiement = db.Column(db.String(20), nullable=False)
+    reference = db.Column(db.String(100))
+    date_paiement = db.Column(db.DateTime, default=datetime.utcnow)
+    notes = db.Column(db.Text)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'montant': self.montant,
+            'mode_paiement': self.mode_paiement,
+            'reference': self.reference,
+            'date_paiement': self.date_paiement.strftime('%Y-%m-%d %H:%M')
+        }
+
+class MouvementStock(db.Model):
+    __tablename__ = 'mouvements_stock'
+    id = db.Column(db.Integer, primary_key=True)
+    produit_id = db.Column(db.Integer, db.ForeignKey('produits.id'), nullable=False)
+    type_mouvement = db.Column(db.String(20), nullable=False)  # entrée, sortie, ajustement, retour
+    quantite = db.Column(db.Integer, nullable=False)
+    quantite_avant = db.Column(db.Integer)
+    quantite_apres = db.Column(db.Integer)
+    motif = db.Column(db.String(200))
+    cout_unitaire = db.Column(db.Float)
+    reference_document = db.Column(db.String(100))
+    date_mouvement = db.Column(db.DateTime, default=datetime.utcnow)
+    utilisateur = db.Column(db.String(100))
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'produit': self.produit.nom,
+            'type': self.type_mouvement,
+            'quantite': self.quantite,
+            'quantite_avant': self.quantite_avant,
+            'quantite_apres': self.quantite_apres,
+            'motif': self.motif,
+            'date': self.date_mouvement.strftime('%Y-%m-%d %H:%M')
+        }
+
+class Fournisseur(db.Model):
+    __tablename__ = 'fournisseurs'
+    id = db.Column(db.Integer, primary_key=True)
+    nom = db.Column(db.String(200), nullable=False)
+    contact = db.Column(db.String(100))
+    telephone = db.Column(db.String(20))
+    telephone2 = db.Column(db.String(20))
+    email = db.Column(db.String(120))
+    adresse = db.Column(db.Text)
+    ville = db.Column(db.String(100))
+    pays = db.Column(db.String(100), default='Burkina Faso')
+    site_web = db.Column(db.String(200))
+    num_contribuable = db.Column(db.String(50))
+    conditions_paiement = db.Column(db.String(100))
+    delai_livraison = db.Column(db.Integer)  # en jours
+    devise_preferee = db.Column(db.String(10), default='XOF')
+    notes = db.Column(db.Text)
+    date_creation = db.Column(db.DateTime, default=datetime.utcnow)
+    actif = db.Column(db.Boolean, default=True)
+    
+    produits = db.relationship('Produit', backref='fournisseur', lazy=True)
+    commandes = db.relationship('Commande', backref='fournisseur', lazy=True)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nom': self.nom,
+            'contact': self.contact,
+            'telephone': self.telephone,
+            'email': self.email,
+            'adresse': self.adresse,
+            'ville': self.ville,
+            'conditions_paiement': self.conditions_paiement,
+            'actif': self.actif
+        }
+
+class Commande(db.Model):
+    __tablename__ = 'commandes'
+    id = db.Column(db.Integer, primary_key=True)
+    numero_commande = db.Column(db.String(50), unique=True, nullable=False)
+    fournisseur_id = db.Column(db.Integer, db.ForeignKey('fournisseurs.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    date_commande = db.Column(db.DateTime, default=datetime.utcnow)
+    date_livraison_prevue = db.Column(db.DateTime)
+    date_livraison_reelle = db.Column(db.DateTime)
+    montant_total = db.Column(db.Float, nullable=False)
+    devise = db.Column(db.String(10), default='XOF')
+    statut = db.Column(db.String(20), default='en_attente')  # en_attente, confirmée, reçue, annulée
+    statut_paiement = db.Column(db.String(20), default='impayé')
+    mode_paiement = db.Column(db.String(20))
+    notes = db.Column(db.Text)
+    
+    items = db.relationship('CommandeItem', backref='commande', lazy=True, cascade='all, delete-orphan')
+    paiements = db.relationship('Paiement', backref='commande', lazy=True)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'numero_commande': self.numero_commande,
+            'fournisseur': self.fournisseur.nom,
+            'date_commande': self.date_commande.strftime('%Y-%m-%d'),
+            'date_livraison_prevue': self.date_livraison_prevue.strftime('%Y-%m-%d') if self.date_livraison_prevue else None,
+            'montant_total': self.montant_total,
+            'devise': self.devise,
+            'statut': self.statut,
+            'statut_paiement': self.statut_paiement,
+            'nb_items': len(self.items)
+        }
+
+class CommandeItem(db.Model):
+    __tablename__ = 'commande_items'
+    id = db.Column(db.Integer, primary_key=True)
+    commande_id = db.Column(db.Integer, db.ForeignKey('commandes.id'), nullable=False)
+    produit_id = db.Column(db.Integer, db.ForeignKey('produits.id'), nullable=False)
+    quantite_commandee = db.Column(db.Integer, nullable=False)
+    quantite_recue = db.Column(db.Integer, default=0)
+    prix_unitaire = db.Column(db.Float, nullable=False)
+    montant_total = db.Column(db.Float, nullable=False)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'produit': self.produit.nom,
+            'quantite_commandee': self.quantite_commandee,
+            'quantite_recue': self.quantite_recue,
+            'prix_unitaire': self.prix_unitaire,
+            'montant_total': self.montant_total
+        }
+
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    type = db.Column(db.String(50))  # stock_faible, vente, commande, etc.
+    titre = db.Column(db.String(200))
+    message = db.Column(db.Text)
+    lue = db.Column(db.Boolean, default=False)
+    date_creation = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'type': self.type,
+            'titre': self.titre,
+            'message': self.message,
+            'lue': self.lue,
+            'date': self.date_creation.strftime('%Y-%m-%d %H:%M')
+        }
+
+class ParametreSysteme(db.Model):
+    __tablename__ = 'parametres_systeme'
+    id = db.Column(db.Integer, primary_key=True)
+    cle = db.Column(db.String(100), unique=True, nullable=False)
+    valeur = db.Column(db.Text)
+    description = db.Column(db.Text)
+    type_valeur = db.Column(db.String(20), default='string')  # string, number, boolean, json
+    
+    @classmethod
+    def get_value(cls, cle, default=None):
+        param = cls.query.filter_by(cle=cle).first()
+        if not param:
+            return default
+        if param.type_valeur == 'json':
+            return json.loads(param.valeur)
+        elif param.type_valeur == 'boolean':
+            return param.valeur.lower() == 'true'
+        elif param.type_valeur == 'number':
+            return float(param.valeur)
+        return param.valeur
+    
+    @classmethod
+    def set_value(cls, cle, valeur, type_valeur='string'):
+        param = cls.query.filter_by(cle=cle).first()
+        if param:
+            param.valeur = str(valeur) if type_valeur != 'json' else json.dumps(valeur)
+        else:
+            param = cls(cle=cle, valeur=str(valeur) if type_valeur != 'json' else json.dumps(valeur), type_valeur=type_valeur)
+            db.session.add(param)
+        db.session.commit()
+
+# ==================== UTILITAIRES ====================
+
+def convertir_devise(montant, devise_source, devise_cible):
+    """Convertit un montant d'une devise à une autre"""
+    if devise_source == devise_cible:
+        return montant
+    
+    currencies = app.config['CURRENCIES']
+    # Convertir en devise de base (XOF)
+    montant_base = montant / currencies[devise_source]['rate']
+    # Convertir en devise cible
+    return montant_base * currencies[devise_cible]['rate']
+
+def envoyer_notification(user_id, type_notif, titre, message):
+    """Crée une notification pour un utilisateur"""
+    notif = Notification(
+        user_id=user_id,
+        type=type_notif,
+        titre=titre,
+        message=message
+    )
+    db.session.add(notif)
+    db.session.commit()
+    return notif
+
+def envoyer_email(destinataire, sujet, corps):
+    """Envoie un email (à implémenter avec votre service SMTP)"""
+    # Implémentation simplifiée - à adapter selon votre service
+    print(f"Email envoyé à {destinataire}: {sujet}")
+    return True
+
+def envoyer_sms(telephone, message):
+    """Envoie un SMS (à implémenter avec votre service SMS)"""
+    # Implémentation simplifiée - à adapter selon votre service
+    print(f"SMS envoyé à {telephone}: {message}")
+    return True
+
+def verifier_stock_faible():
+    """Vérifie et envoie des alertes pour les produits en stock faible"""
+    produits_faible = Produit.query.filter(
+        Produit.stock_actuel <= Produit.stock_min,
+        Produit.actif == True
+    ).all()
+    
+    if produits_faible:
+        # Notifier les admins
+        admins = User.query.filter_by(role='admin', actif=True).all()
+        for admin in admins:
+            message = f"{len(produits_faible)} produit(s) en stock faible nécessitent une attention"
+            envoyer_notification(admin.id, 'stock_faible', 'Alerte Stock', message)
+    
+    return produits_faible
+
+# ==================== ROUTES AUTHENTIFICATION ====================
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        data = request.json
+        user = User.query.filter_by(username=data['username']).first()
+        
+        if user and user.check_password(data['password']) and user.actif:
+            login_user(user)
+            user.dernier_login = datetime.utcnow()
+            db.session.commit()
+            return jsonify({'success': True, 'user': user.to_dict()})
+        
+        return jsonify({'success': False, 'message': 'Identifiants invalides'}), 401
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for('login'))
+
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({'error': 'Nom d\'utilisateur déjà utilisé'}), 400
+    
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'error': 'Email déjà utilisé'}), 400
+    
+    user = User(
+        username=data['username'],
+        email=data['email'],
+        nom=data.get('nom'),
+        prenom=data.get('prenom'),
+        telephone=data.get('telephone'),
+        role=data.get('role', 'user')
+    )
+    user.set_password(data['password'])
+    
+    db.session.add(user)
+    db.session.commit()
+    
+    return jsonify(user.to_dict()), 201
+
+# ==================== ROUTES PRINCIPALES ====================
+
+@app.route('/')
+@login_required
+def index():
+    return render_template('dashboard.html')
+
+@app.route('/api/dashboard')
+@login_required
+def dashboard_data():
+    """Données du tableau de bord avec analyse avancée"""
+    today = datetime.now().date()
+    start_of_day = datetime.combine(today, datetime.min.time())
+    start_of_month = datetime(today.year, today.month, 1)
+    start_of_year = datetime(today.year, 1, 1)
+    
+    # Devise de l'utilisateur
+    user_prefs = json.loads(current_user.preferences) if current_user.preferences else {}
+    devise = user_prefs.get('devise', app.config['DEFAULT_CURRENCY'])
+    
+    # Ventes
+    ventes_jour = db.session.query(func.sum(Vente.montant_total)).filter(
+        Vente.date_vente >= start_of_day,
+        Vente.statut == 'confirmée'
+    ).scalar() or 0
+    
+    ventes_mois = db.session.query(func.sum(Vente.montant_total)).filter(
+        Vente.date_vente >= start_of_month,
+        Vente.statut == 'confirmée'
+    ).scalar() or 0
+    
+    ventes_annee = db.session.query(func.sum(Vente.montant_total)).filter(
+        Vente.date_vente >= start_of_year,
+        Vente.statut == 'confirmée'
+    ).scalar() or 0
+    
+    # Commandes fournisseurs
+    commandes_en_cours = Commande.query.filter(
+        Commande.statut.in_(['en_attente', 'confirmée'])
+    ).count()
+    
+    montant_commandes_en_cours = db.session.query(func.sum(Commande.montant_total)).filter(
+        Commande.statut.in_(['en_attente', 'confirmée'])
+    ).scalar() or 0
+    
+    # Statistiques produits
+    nb_produits = Produit.query.filter_by(actif=True).count()
+    produits_stock_faible = Produit.query.filter(
+        Produit.stock_actuel <= Produit.stock_min,
+        Produit.actif == True
+    ).count()
+    
+    valeur_stock_total = db.session.query(
+        func.sum(Produit.stock_actuel * Produit.prix_achat)
+    ).filter_by(actif=True).scalar() or 0
+    
+    # Top produits vendus (mois en cours)
+    top_produits = db.session.query(
+        Produit.nom,
+        func.sum(Vente.quantite).label('total_vendu'),
+        func.sum(Vente.montant_total).label('ca')
+    ).join(Vente).filter(
+        Vente.date_vente >= start_of_month,
+        Vente.statut == 'confirmée'
+    ).group_by(Produit.id).order_by(func.sum(Vente.quantite).desc()).limit(5).all()
+    
+    # Ventes par mois (12 derniers mois)
+    ventes_mensuelles = []
+    for i in range(11, -1, -1):
+        date = datetime.now() - timedelta(days=30*i)
+        debut_mois = datetime(date.year, date.month, 1)
+        if date.month == 12:
+            fin_mois = datetime(date.year + 1, 1, 1)
+        else:
+            fin_mois = datetime(date.year, date.month + 1, 1)
+        
+        total = db.session.query(func.sum(Vente.montant_total)).filter(
+            Vente.date_vente >= debut_mois,
+            Vente.date_vente < fin_mois,
+            Vente.statut == 'confirmée'
+        ).scalar() or 0
+        
+        ventes_mensuelles.append({
+            'mois': debut_mois.strftime('%b %Y'),
+            'montant': total
+        })
+    
+    # Statistiques clients
+    nb_clients = Client.query.filter_by(actif=True).count()
+    nouveaux_clients = Client.query.filter(Client.date_creation >= start_of_month).count()
+    
+    # Top clients
+    top_clients = db.session.query(
+        Client.nom,
+        Client.prenom,
+        func.sum(Vente.montant_total).label('total')
+    ).join(Vente).filter(
+        Vente.date_vente >= start_of_month,
+        Vente.statut == 'confirmée'
+    ).group_by(Client.id).order_by(func.sum(Vente.montant_total).desc()).limit(5).all()
+    
+    return jsonify({
+        'ventes': {
+            'jour': ventes_jour,
+            'mois': ventes_mois,
+            'annee': ventes_annee,
+            'mensuelles': ventes_mensuelles
+        },
+        'commandes': {
+            'en_cours': commandes_en_cours,
+            'montant_en_cours': montant_commandes_en_cours
+        },
+        'produits': {
+            'total': nb_produits,
+            'stock_faible': produits_stock_faible,
+            'valeur_stock': valeur_stock_total,
+            'top_ventes': [{'nom': p[0], 'quantite': p[1], 'ca': p[2]} for p in top_produits]
+        },
+        'clients': {
+            'total': nb_clients,
+            'nouveaux': nouveaux_clients,
+            'top_clients': [{'nom': f"{c[0]} {c[1]}", 'total': c[2]} for c in top_clients]
+        },
+        'devise': devise,
+        'stats_globales': {
+            'categories': Categorie.query.filter_by(actif=True).count(),
+            'fournisseurs': Fournisseur.query.filter_by(actif=True).count(),
+            'utilisateurs': User.query.filter_by(actif=True).count()
+        }
+    })
+
+# ==================== ROUTES PRODUITS ====================
+
+@app.route('/produits')
+@login_required
+def produits():
+    return render_template('produits.html')
+
+@app.route('/api/produits', methods=['GET'])
+@login_required
+def get_produits():
+    search = request.args.get('search', '')
+    categorie_id = request.args.get('categorie_id')
+    stock_faible = request.args.get('stock_faible')
+    
+    query = Produit.query.filter_by(actif=True)
+    
+    if search:
+        query = query.filter(or_(
+            Produit.nom.ilike(f'%{search}%'),
+            Produit.reference.ilike(f'%{search}%'),
+            Produit.code_barre.ilike(f'%{search}%')
+        ))
+    
+    if categorie_id:
+        query = query.filter_by(categorie_id=categorie_id)
+    
+    if stock_faible == 'true':
+        query = query.filter(Produit.stock_actuel <= Produit.stock_min)
+    
+    produits = query.all()
+    return jsonify([p.to_dict() for p in produits])
+
+@app.route('/api/produits', methods=['POST'])
+@login_required
+def create_produit():
+    data = request.json
+    
+    # Vérifier si la référence existe
+    if Produit.query.filter_by(reference=data['reference']).first():
+        return jsonify({'error': 'Référence déjà utilisée'}), 400
+    
+    produit = Produit(
+        nom=data['nom'],
+        reference=data['reference'],
+        code_barre=data.get('code_barre'),
+        description=data.get('description'),
+        prix_achat=data['prix_achat'],
+        prix_vente=data['prix_vente'],
+        tva=data.get('tva', 0),
+        stock_actuel=data.get('stock_actuel', 0),
+        stock_min=data.get('stock_min', 0),
+        stock_max=data.get('stock_max', 1000),
+        categorie_id=data.get('categorie_id'),
+        fournisseur_id=data.get('fournisseur_id'),
+        unite_mesure=data.get('unite_mesure', 'unité'),
+        emplacement=data.get('emplacement')
+    )
+    
+    db.session.add(produit)
+    db.session.commit()
+    
+    # Créer mouvement initial
+    if produit.stock_actuel > 0:
+        mouvement = MouvementStock(
+            produit_id=produit.id,
+            type_mouvement='entrée',
+            quantite=produit.stock_actuel,
+            quantite_avant=0,
+            quantite_apres=produit.stock_actuel,
+            motif='Stock initial',
+            utilisateur=current_user.username
+        )
+        db.session.add(mouvement)
+        db.session.commit()
+    
+    return jsonify(produit.to_dict()), 201
+
+@app.route('/api/produits/<int:id>', methods=['PUT'])
+@login_required
+def update_produit(id):
+    produit = Produit.query.get_or_404(id)
+    data = request.json
+    
+    stock_avant = produit.stock_actuel
+    
+    for key, value in data.items():
+        if hasattr(produit, key) and key != 'id':
+            setattr(produit, key, value)
+    
+    # Si le stock a changé, créer un mouvement
+    if 'stock_actuel' in data and data['stock_actuel'] != stock_avant:
+        mouvement = MouvementStock(
+            produit_id=produit.id,
+            type_mouvement='ajustement',
+            quantite=abs(data['stock_actuel'] - stock_avant),
+            quantite_avant=stock_avant,
+            quantite_apres=data['stock_actuel'],
+            motif='Ajustement manuel',
+            utilisateur=current_user.username
+        )
+        db.session.add(mouvement)
+    
+    db.session.commit()
+    return jsonify(produit.to_dict())
+
+@app.route('/api/produits/<int:id>', methods=['DELETE'])
+@login_required
+def delete_produit(id):
+    produit = Produit.query.get_or_404(id)
+    produit.actif = False
+    db.session.commit()
+    return jsonify({'message': 'Produit désactivé'}), 200
+
+# ==================== ROUTES VENTES ====================
+
+@app.route('/ventes')
+@login_required
+def ventes():
+    return render_template('ventes.html')
+
+@app.route('/api/ventes', methods=['GET'])
+@login_required
+def get_ventes():
+    date_debut = request.args.get('date_debut')
+    date_fin = request.args.get('date_fin')
+    client_id = request.args.get('client_id')
+    statut = request.args.get('statut')
+    
+    query = Vente.query
+    
+    if date_debut:
+        query = query.filter(Vente.date_vente >= datetime.fromisoformat(date_debut))
+    if date_fin:
+        query = query.filter(Vente.date_vente <= datetime.fromisoformat(date_fin))
+    if client_id:
+        query = query.filter_by(client_id=client_id)
+    if statut:
+        query = query.filter_by(statut=statut)
+    
+    ventes = query.order_by(Vente.date_vente.desc()).limit(100).all()
+    return jsonify([v.to_dict() for v in ventes])
+
+@app.route('/api/ventes', methods=['POST'])
+@login_required
+def create_vente():
+    data = request.json
+    
+    produit = Produit.query.get_or_404(data['produit_id'])
+    
+    if produit.stock_actuel < data['quantite']:
+        return jsonify({'error': 'Stock insuffisant'}), 400
+    
+    # Génération du numéro de facture
+    last_vente = Vente.query.order_by(Vente.id.desc()).first()
+    numero = f"F{datetime.now().strftime('%Y%m')}{(last_vente.id + 1):05d}" if last_vente else f"F{datetime.now().strftime('%Y%m')}00001"
+    
+    # Calculs
+    prix_unitaire = int(data.get('prix_unitaire', produit.prix_vente))
+    remise = int(data.get('remise', 0))
+    tva = int(data.get('tva', produit.tva))
+    
+    montant_ht = data['quantite'] * prix_unitaire * (1 - remise/100)
+    montant_tva = montant_ht * (tva/100)
+    montant_total = montant_ht + montant_tva
+    
+    vente = Vente(
+        numero_facture=numero,
+        produit_id=data['produit_id'],
+        client_id=data.get('client_id'),
+        user_id=current_user.id,
+        quantite=data['quantite'],
+        prix_unitaire=prix_unitaire,
+        remise=remise,
+        tva=tva,
+        montant_total=montant_total,
+        devise=data.get('devise', app.config['DEFAULT_CURRENCY']),
+        mode_paiement=data.get('mode_paiement', 'espèces'),
+        statut_paiement=data.get('statut_paiement', 'payé'),
+        notes=data.get('notes')
+    )
+    
+    # Mise à jour du stock
+    produit.stock_actuel -= data['quantite']
+    
+    # Enregistrement du mouvement
+    mouvement = MouvementStock(
+        produit_id=data['produit_id'],
+        type_mouvement='sortie',
+        quantite=data['quantite'],
+        quantite_avant=produit.stock_actuel + data['quantite'],
+        quantite_apres=produit.stock_actuel,
+        motif=f"Vente {numero}",
+        cout_unitaire=prix_unitaire,
+        reference_document=numero,
+        utilisateur=current_user.username
+    )
+    
+    db.session.add(vente)
+    db.session.add(mouvement)
+    
+    # Enregistrer le paiement si payé
+    if vente.statut_paiement == 'payé':
+        paiement = Paiement(
+            vente_id=vente.id,
+            montant=montant_total,
+            mode_paiement=vente.mode_paiement,
+            reference=numero
+        )
+        db.session.add(paiement)
+    
+    db.session.commit()
+    
+    # Vérifier stock faible
+    if produit.stock_faible:
+        envoyer_notification(
+            current_user.id,
+            'stock_faible',
+            'Alerte Stock',
+            f"Le produit {produit.nom} est en stock faible ({produit.stock_actuel} unités)"
+        )
+    
+    # Envoyer email/SMS au client si configuré
+    if vente.client and vente.client.email:
+        envoyer_email(
+            vente.client.email,
+            f"Confirmation de vente - {numero}",
+            f"Merci pour votre achat. Facture {numero} - Montant: {montant_total} {vente.devise}"
+        )
+    
+    return jsonify(vente.to_dict()), 201
+
+# ==================== ROUTES COMMANDES FOURNISSEURS ====================
+
+@app.route('/commandes')
+@login_required
+def commandes():
+    return render_template('commandes.html')
+
+@app.route('/api/commandes', methods=['GET'])
+@login_required
+def get_commandes():
+    statut = request.args.get('statut')
+    fournisseur_id = request.args.get('fournisseur_id')
+    
+    query = Commande.query
+    
+    if statut:
+        query = query.filter_by(statut=statut)
+    if fournisseur_id:
+        query = query.filter_by(fournisseur_id=fournisseur_id)
+    
+    commandes = query.order_by(Commande.date_commande.desc()).all()
+    return jsonify([c.to_dict() for c in commandes])
+
+@app.route('/api/commandes', methods=['POST'])
+@login_required
+def create_commande():
+    data = request.json
+    
+    # Génération du numéro de commande
+    last_cmd = Commande.query.order_by(Commande.id.desc()).first()
+    numero = f"CMD{datetime.now().strftime('%Y%m')}{(last_cmd.id + 1):05d}" if last_cmd else f"CMD{datetime.now().strftime('%Y%m')}00001"
+    
+    commande = Commande(
+        numero_commande=numero,
+        fournisseur_id=data['fournisseur_id'],
+        user_id=current_user.id,
+        date_livraison_prevue=datetime.fromisoformat(data['date_livraison_prevue']) if data.get('date_livraison_prevue') else None,
+        montant_total=0,
+        devise=data.get('devise', app.config['DEFAULT_CURRENCY']),
+        mode_paiement=data.get('mode_paiement'),
+        notes=data.get('notes')
+    )
+    
+    db.session.add(commande)
+    db.session.flush()
+    
+    # Ajouter les items
+    montant_total = 0
+    for item_data in data['items']:
+        item = CommandeItem(
+            commande_id=commande.id,
+            produit_id=item_data['produit_id'],
+            quantite_commandee=item_data['quantite'],
+            prix_unitaire=item_data['prix_unitaire'],
+            montant_total=item_data['quantite'] * item_data['prix_unitaire']
+        )
+        montant_total += item.montant_total
+        db.session.add(item)
+    
+    commande.montant_total = montant_total
+    db.session.commit()
+    
+    # Notifier
+    envoyer_notification(
+        current_user.id,
+        'commande',
+        'Nouvelle commande',
+        f"Commande {numero} créée - Montant: {montant_total} {commande.devise}"
+    )
+    
+    return jsonify(commande.to_dict()), 201
+
+@app.route('/api/commandes/<int:id>/recevoir', methods=['POST'])
+@login_required
+def recevoir_commande(id):
+    commande = Commande.query.get_or_404(id)
+    data = request.json
+    
+    commande.statut = 'reçue'
+    commande.date_livraison_reelle = datetime.utcnow()
+    
+    # Mettre à jour les stocks
+    for item_data in data.get('items', []):
+        item = CommandeItem.query.get(item_data['id'])
+        if item:
+            item.quantite_recue = item_data['quantite_recue']
+            
+            # Mise à jour du stock produit
+            produit = item.produit
+            stock_avant = produit.stock_actuel
+            produit.stock_actuel += item_data['quantite_recue']
+            
+            # Enregistrer le mouvement
+            mouvement = MouvementStock(
+                produit_id=produit.id,
+                type_mouvement='entrée',
+                quantite=item_data['quantite_recue'],
+                quantite_avant=stock_avant,
+                quantite_apres=produit.stock_actuel,
+                motif=f"Réception commande {commande.numero_commande}",
+                cout_unitaire=item.prix_unitaire,
+                reference_document=commande.numero_commande,
+                utilisateur=current_user.username
+            )
+            db.session.add(mouvement)
+    
+    db.session.commit()
+    
+    return jsonify(commande.to_dict())
+
+# ==================== ROUTES CLIENTS ====================
+
+@app.route('/clients')
+@login_required
+def clients():
+    return render_template('clients.html')
+
+@app.route('/api/clients', methods=['GET'])
+@login_required
+def get_clients():
+    search = request.args.get('search', '')
+    type_client = request.args.get('type')
+    
+    query = Client.query.filter_by(actif=True)
+    
+    if search:
+        query = query.filter(or_(
+            Client.nom.ilike(f'%{search}%'),
+            Client.prenom.ilike(f'%{search}%'),
+            Client.email.ilike(f'%{search}%'),
+            Client.telephone.ilike(f'%{search}%')
+        ))
+    
+    if type_client:
+        query = query.filter_by(type_client=type_client)
+    
+    clients = query.all()
+    return jsonify([c.to_dict() for c in clients])
+
+@app.route('/api/clients', methods=['POST'])
+@login_required
+def create_client():
+    data = request.json
+    
+    client = Client(
+        nom=data['nom'],
+        prenom=data.get('prenom'),
+        entreprise=data.get('entreprise'),
+        email=data.get('email'),
+        telephone=data.get('telephone'),
+        telephone2=data.get('telephone2'),
+        adresse=data.get('adresse'),
+        ville=data.get('ville'),
+        pays=data.get('pays', 'Burkina Faso'),
+        type_client=data.get('type_client', 'particulier'),
+        remise_defaut=data.get('remise_defaut', 0),
+        plafond_credit=data.get('plafond_credit', 0),
+        devise_preferee=data.get('devise_preferee', 'XOF'),
+        notes=data.get('notes')
+    )
+    db.session.add(client)
+    db.session.commit()
+    
+    return jsonify(client.to_dict()), 201
+
+@app.route('/api/clients/<int:id>', methods=['PUT'])
+@login_required
+def update_client(id):
+    client = Client.query.get_or_404(id)
+    data = request.json
+    
+    for key, value in data.items():
+        if hasattr(client, key) and key != 'id':
+            setattr(client, key, value)
+    
+    db.session.commit()
+    return jsonify(client.to_dict())
+
+# ==================== ROUTES FOURNISSEURS ====================
+
+@app.route('/fournisseurs')
+@login_required
+def fournisseurs():
+    return render_template('fournisseurs.html')
+
+@app.route('/api/fournisseurs', methods=['GET'])
+@login_required
+def get_fournisseurs():
+    fournisseurs = Fournisseur.query.filter_by(actif=True).all()
+    return jsonify([f.to_dict() for f in fournisseurs])
+
+@app.route('/api/fournisseurs', methods=['POST'])
+@login_required
+def create_fournisseur():
+    data = request.json
+    
+    fournisseur = Fournisseur(
+        nom=data['nom'],
+        contact=data.get('contact'),
+        telephone=data.get('telephone'),
+        telephone2=data.get('telephone2'),
+        email=data.get('email'),
+        adresse=data.get('adresse'),
+        ville=data.get('ville'),
+        pays=data.get('pays', 'Burkina Faso'),
+        site_web=data.get('site_web'),
+        conditions_paiement=data.get('conditions_paiement'),
+        delai_livraison=data.get('delai_livraison'),
+        devise_preferee=data.get('devise_preferee', 'XOF'),
+        notes=data.get('notes')
+    )
+    db.session.add(fournisseur)
+    db.session.commit()
+    
+    return jsonify(fournisseur.to_dict()), 201
+
+# ==================== ROUTES CATÉGORIES ====================
+
+@app.route('/api/categories', methods=['GET'])
+@login_required
+def get_categories():
+    categories = Categorie.query.filter_by(actif=True).all()
+    return jsonify([c.to_dict() for c in categories])
+
+@app.route('/api/categories', methods=['POST'])
+@login_required
+def create_categorie():
+    data = request.json
+    
+    categorie = Categorie(
+        nom=data['nom'],
+        description=data.get('description'),
+        parent_id=data.get('parent_id')
+    )
+    db.session.add(categorie)
+    db.session.commit()
+    
+    return jsonify(categorie.to_dict()), 201
+
+# ==================== ROUTES NOTIFICATIONS ====================
+
+@app.route('/api/notifications', methods=['GET'])
+@login_required
+def get_notifications():
+    notifications = Notification.query.filter_by(
+        user_id=current_user.id
+    ).order_by(Notification.date_creation.desc()).limit(50).all()
+    
+    return jsonify([n.to_dict() for n in notifications])
+
+@app.route('/api/notifications/<int:id>/lire', methods=['POST'])
+@login_required
+def marquer_notification_lue(id):
+    notif = Notification.query.get_or_404(id)
+    notif.lue = True
+    db.session.commit()
+    return jsonify({'success': True})
+
+# ==================== EXPORT PDF ====================
+
+@app.route('/api/export/facture/<int:vente_id>')
+@login_required
+def export_facture_pdf(vente_id):
+    vente = Vente.query.get_or_404(vente_id)
+    
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # En-tête
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=24, textColor=colors.HexColor('#1abc9c'))
+    elements.append(Paragraph("FACTURE", title_style))
+    elements.append(Spacer(1, 12))
+    
+    # Informations facture
+    info_data = [
+        ['Numéro:', vente.numero_facture],
+        ['Date:', vente.date_vente.strftime('%d/%m/%Y')],
+        ['Client:', f"{vente.client.nom} {vente.client.prenom}" if vente.client else "Client anonyme"],
+    ]
+    
+    info_table = Table(info_data, colWidths=[2*inch, 4*inch])
+    info_table.setStyle(TableStyle([
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.grey),
+    ]))
+    elements.append(info_table)
+    elements.append(Spacer(1, 20))
+    
+    # Détails produits
+    data = [['Produit', 'Quantité', 'Prix Unit.', 'Total']]
+    data.append([
+        vente.produit.nom,
+        str(vente.quantite),
+        f"{vente.prix_unitaire} {vente.devise}",
+        f"{vente.montant_total} {vente.devise}"
+    ])
+    
+    table = Table(data, colWidths=[3*inch, 1*inch, 1.5*inch, 1.5*inch])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1abc9c')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    elements.append(table)
+    
+    # Total
+    elements.append(Spacer(1, 20))
+    total_style = ParagraphStyle('Total', parent=styles['Normal'], fontSize=16, textColor=colors.HexColor('#1abc9c'))
+    elements.append(Paragraph(f"<b>TOTAL: {vente.montant_total} {vente.devise}</b>", total_style))
+    
+    doc.build(elements)
+    buffer.seek(0)
+    
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"facture_{vente.numero_facture}.pdf",
+        mimetype='application/pdf'
+    )
+
+# ==================== EXPORT EXCEL ====================
+
+@app.route('/api/export/produits/excel')
+@login_required
+def export_produits_excel():
+    produits = Produit.query.filter_by(actif=True).all()
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Produits"
+    
+    # En-têtes
+    headers = ['Référence', 'Nom', 'Catégorie', 'Prix Achat', 'Prix Vente', 'Stock', 'Valeur Stock']
+    ws.append(headers)
+    
+    # Style des en-têtes
+    header_fill = PatternFill(start_color="1ABC9C", end_color="1ABC9C", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF")
+    
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+    
+    # Données
+    for p in produits:
+        ws.append([
+            p.reference,
+            p.nom,
+            p.categorie.nom if p.categorie else '',
+            p.prix_achat,
+            p.prix_vente,
+            p.stock_actuel,
+            p.valeur_stock
+        ])
+    
+    # Ajuster largeur colonnes
+    for column in ws.columns:
+        max_length = 0
+        column = [cell for cell in column]
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(cell.value)
+            except:
+                pass
+        adjusted_width = (max_length + 2)
+        ws.column_dimensions[column[0].column_letter].width = adjusted_width
+    
+    # Sauvegarder dans buffer
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"produits_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+@app.route('/api/export/ventes/excel')
+@login_required
+def export_ventes_excel():
+    date_debut = request.args.get('date_debut')
+    date_fin = request.args.get('date_fin')
+    
+    query = Vente.query.filter_by(statut='confirmée')
+    
+    if date_debut:
+        query = query.filter(Vente.date_vente >= datetime.fromisoformat(date_debut))
+    if date_fin:
+        query = query.filter(Vente.date_vente <= datetime.fromisoformat(date_fin))
+    
+    ventes = query.order_by(Vente.date_vente.desc()).all()
+    
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Ventes"
+    
+    # En-têtes
+    headers = ['Numéro', 'Date', 'Client', 'Produit', 'Quantité', 'Prix Unit.', 'Total', 'Statut']
+    ws.append(headers)
+    
+    # Style
+    header_fill = PatternFill(start_color="1ABC9C", end_color="1ABC9C", fill_type="solid")
+    header_font = Font(bold=True, color="FFFFFF")
+    
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+    
+    # Données
+    for v in ventes:
+        ws.append([
+            v.numero_facture,
+            v.date_vente.strftime('%d/%m/%Y %H:%M'),
+            f"{v.client.nom} {v.client.prenom}" if v.client else "Anonyme",
+            v.produit.nom,
+            v.quantite,
+            v.prix_unitaire,
+            v.montant_total,
+            v.statut
+        ])
+    
+    # Ajuster largeur colonnes
+    for column in ws.columns:
+        max_length = 0
+        column = [cell for cell in column]
+        for cell in column:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(cell.value)
+            except:
+                pass
+        adjusted_width = (max_length + 2)
+        ws.column_dimensions[column[0].column_letter].width = adjusted_width
+    
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f"ventes_{datetime.now().strftime('%Y%m%d')}.xlsx",
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+# ==================== API REST COMPLÈTE ====================
+
+@app.route('/api/stats/produits', methods=['GET'])
+@login_required
+def stats_produits():
+    """Statistiques détaillées des produits"""
+    
+    # Produits les plus vendus
+    top_ventes = db.session.query(
+        Produit.id,
+        Produit.nom,
+        func.sum(Vente.quantite).label('total_vendu'),
+        func.sum(Vente.montant_total).label('ca')
+    ).join(Vente).filter(
+        Vente.statut == 'confirmée'
+    ).group_by(Produit.id).order_by(func.sum(Vente.quantite).desc()).limit(10).all()
+    
+    # Produits à rotation rapide
+    rotation_rapide = db.session.query(
+        Produit.id,
+        Produit.nom,
+        Produit.stock_actuel,
+        func.count(Vente.id).label('nb_ventes')
+    ).join(Vente).filter(
+        Vente.date_vente >= datetime.now() - timedelta(days=30),
+        Vente.statut == 'confirmée'
+    ).group_by(Produit.id).having(func.count(Vente.id) > 5).all()
+    
+    # Produits obsolètes (pas de vente depuis 90 jours)
+    obsoletes = db.session.query(Produit).filter(
+        ~Produit.id.in_(
+            db.session.query(Vente.produit_id).filter(
+                Vente.date_vente >= datetime.now() - timedelta(days=90)
+            )
+        ),
+        Produit.actif == True
+    ).all()
+    
+    return jsonify({
+        'top_ventes': [
+            {'id': p[0], 'nom': p[1], 'quantite': p[2], 'ca': p[3]}
+            for p in top_ventes
+        ],
+        'rotation_rapide': [
+            {'id': p[0], 'nom': p[1], 'stock': p[2], 'ventes': p[3]}
+            for p in rotation_rapide
+        ],
+        'obsoletes': [p.to_dict() for p in obsoletes]
+    })
+
+@app.route('/api/stats/ventes', methods=['GET'])
+@login_required
+def stats_ventes():
+    """Statistiques avancées des ventes"""
+    periode = request.args.get('periode', 'mois')  # jour, semaine, mois, annee
+    
+    now = datetime.now()
+    if periode == 'jour':
+        date_debut = datetime.combine(now.date(), datetime.min.time())
+    elif periode == 'semaine':
+        date_debut = now - timedelta(days=7)
+    elif periode == 'mois':
+        date_debut = datetime(now.year, now.month, 1)
+    else:  # année
+        date_debut = datetime(now.year, 1, 1)
+    
+    # CA par période
+    ca_total = db.session.query(func.sum(Vente.montant_total)).filter(
+        Vente.date_vente >= date_debut,
+        Vente.statut == 'confirmée'
+    ).scalar() or 0
+    
+    # Nombre de ventes
+    nb_ventes = Vente.query.filter(
+        Vente.date_vente >= date_debut,
+        Vente.statut == 'confirmée'
+    ).count()
+    
+    # Panier moyen
+    panier_moyen = ca_total / nb_ventes if nb_ventes > 0 else 0
+    
+    # Ventes par catégorie
+    ventes_par_cat = db.session.query(
+        Categorie.nom,
+        func.sum(Vente.montant_total).label('total')
+    ).join(Produit).join(Vente).filter(
+        Vente.date_vente >= date_debut,
+        Vente.statut == 'confirmée'
+    ).group_by(Categorie.id).all()
+    
+    # Ventes par mode de paiement
+    ventes_par_paiement = db.session.query(
+        Vente.mode_paiement,
+        func.sum(Vente.montant_total).label('total')
+    ).filter(
+        Vente.date_vente >= date_debut,
+        Vente.statut == 'confirmée'
+    ).group_by(Vente.mode_paiement).all()
+    
+    # Évolution journalière
+    evolution = []
+    for i in range(30):
+        date = now - timedelta(days=i)
+        debut_jour = datetime.combine(date.date(), datetime.min.time())
+        fin_jour = debut_jour + timedelta(days=1)
+        
+        total = db.session.query(func.sum(Vente.montant_total)).filter(
+            Vente.date_vente >= debut_jour,
+            Vente.date_vente < fin_jour,
+            Vente.statut == 'confirmée'
+        ).scalar() or 0
+        
+        evolution.append({
+            'date': date.strftime('%d/%m'),
+            'montant': total
+        })
+    
+    return jsonify({
+        'ca_total': ca_total,
+        'nb_ventes': nb_ventes,
+        'panier_moyen': panier_moyen,
+        'ventes_par_categorie': [{'categorie': c[0], 'total': c[1]} for c in ventes_par_cat],
+        'ventes_par_paiement': [{'mode': p[0], 'total': p[1]} for p in ventes_par_paiement],
+        'evolution': list(reversed(evolution))
+    })
+
+@app.route('/api/stats/clients', methods=['GET'])
+@login_required
+def stats_clients():
+    """Statistiques clients"""
+    
+    # Clients les plus actifs
+    top_clients = db.session.query(
+        Client.id,
+        Client.nom,
+        Client.prenom,
+        func.count(Vente.id).label('nb_achats'),
+        func.sum(Vente.montant_total).label('total')
+    ).join(Vente).filter(
+        Vente.statut == 'confirmée'
+    ).group_by(Client.id).order_by(func.sum(Vente.montant_total).desc()).limit(10).all()
+    
+    # Nouveaux clients par mois
+    nouveaux_par_mois = []
+    for i in range(12):
+        date = datetime.now() - timedelta(days=30*i)
+        debut_mois = datetime(date.year, date.month, 1)
+        if date.month == 12:
+            fin_mois = datetime(date.year + 1, 1, 1)
+        else:
+            fin_mois = datetime(date.year, date.month + 1, 1)
+        
+        nb = Client.query.filter(
+            Client.date_creation >= debut_mois,
+            Client.date_creation < fin_mois
+        ).count()
+        
+        nouveaux_par_mois.append({
+            'mois': debut_mois.strftime('%b %Y'),
+            'nombre': nb
+        })
+    
+    # Segmentation clients
+    total_clients = Client.query.filter_by(actif=True).count()
+    clients_particuliers = Client.query.filter_by(actif=True, type_client='particulier').count()
+    clients_pro = Client.query.filter_by(actif=True, type_client='professionnel').count()
+    
+    return jsonify({
+        'top_clients': [
+            {
+                'id': c[0],
+                'nom': f"{c[1]} {c[2]}",
+                'nb_achats': c[3],
+                'total': c[4]
+            }
+            for c in top_clients
+        ],
+        'nouveaux_par_mois': list(reversed(nouveaux_par_mois)),
+        'segmentation': {
+            'total': total_clients,
+            'particuliers': clients_particuliers,
+            'professionnels': clients_pro
+        }
+    })
+
+@app.route('/api/devise/convertir', methods=['POST'])
+@login_required
+def convertir_devise():
+    """Convertit un montant d'une devise à une autre"""
+    data = request.json
+    montant = data['montant']
+    devise_source = data['devise_source']
+    devise_cible = data['devise_cible']
+    
+    montant_converti = convertir_devise(montant, devise_source, devise_cible)
+    
+    return jsonify({
+        'montant_source': montant,
+        'devise_source': devise_source,
+        'montant_cible': montant_converti,
+        'devise_cible': devise_cible,
+        'taux': app.config['CURRENCIES'][devise_cible]['rate'] / app.config['CURRENCIES'][devise_source]['rate']
+    })
+
+@app.route('/api/rapport/stock', methods=['GET'])
+@login_required
+def rapport_stock():
+    """Rapport complet sur l'état du stock"""
+    
+    produits = Produit.query.filter_by(actif=True).all()
+    
+    stock_total = sum(p.stock_actuel for p in produits)
+    valeur_totale = sum(p.valeur_stock for p in produits)
+    
+    stock_faible = [p for p in produits if p.stock_faible]
+    stock_surabondant = [p for p in produits if p.stock_actuel >= p.stock_max]
+    
+    # Répartition par catégorie
+    repartition = db.session.query(
+        Categorie.nom,
+        func.count(Produit.id).label('nb_produits'),
+        func.sum(Produit.stock_actuel).label('stock_total'),
+        func.sum(Produit.stock_actuel * Produit.prix_achat).label('valeur')
+    ).join(Produit).filter(Produit.actif == True).group_by(Categorie.id).all()
+    
+    return jsonify({
+        'resume': {
+            'nb_produits': len(produits),
+            'stock_total': stock_total,
+            'valeur_totale': valeur_totale,
+            'stock_faible': len(stock_faible),
+            'stock_surabondant': len(stock_surabondant)
+        },
+        'produits_stock_faible': [p.to_dict() for p in stock_faible],
+        'produits_surabondants': [p.to_dict() for p in stock_surabondant],
+        'repartition_categorie': [
+            {
+                'categorie': r[0],
+                'nb_produits': r[1],
+                'stock': r[2],
+                'valeur': r[3]
+            }
+            for r in repartition
+        ]
+    })
+
+@app.route('/api/rapport/rentabilite', methods=['GET'])
+@login_required
+def rapport_rentabilite():
+    """Analyse de rentabilité"""
+    date_debut = request.args.get('date_debut')
+    date_fin = request.args.get('date_fin')
+    
+    query = Vente.query.filter_by(statut='confirmée')
+    
+    if date_debut:
+        query = query.filter(Vente.date_vente >= datetime.fromisoformat(date_debut))
+    if date_fin:
+        query = query.filter(Vente.date_vente <= datetime.fromisoformat(date_fin))
+    
+    ventes = query.all()
+    
+    ca_total = sum(v.montant_total for v in ventes)
+    cout_achat_total = sum(v.produit.prix_achat * v.quantite for v in ventes)
+    benefice_brut = ca_total - cout_achat_total
+    marge_brute = (benefice_brut / ca_total * 100) if ca_total > 0 else 0
+    
+    # Rentabilité par produit
+    rentabilite_produits = {}
+    for v in ventes:
+        if v.produit_id not in rentabilite_produits:
+            rentabilite_produits[v.produit_id] = {
+                'nom': v.produit.nom,
+                'ca': 0,
+                'cout': 0,
+                'benefice': 0,
+                'quantite': 0
+            }
+        
+        rentabilite_produits[v.produit_id]['ca'] += v.montant_total
+        rentabilite_produits[v.produit_id]['cout'] += v.produit.prix_achat * v.quantite
+        rentabilite_produits[v.produit_id]['benefice'] += v.montant_total - (v.produit.prix_achat * v.quantite)
+        rentabilite_produits[v.produit_id]['quantite'] += v.quantite
+    
+    # Trier par bénéfice
+    top_rentables = sorted(
+        rentabilite_produits.values(),
+        key=lambda x: x['benefice'],
+        reverse=True
+    )[:10]
+    
+    return jsonify({
+        'resume': {
+            'ca_total': ca_total,
+            'cout_total': cout_achat_total,
+            'benefice_brut': benefice_brut,
+            'marge_brute': round(marge_brute, 2)
+        },
+        'top_rentables': top_rentables
+    })
+
+# ==================== ROUTES MOUVEMENTS STOCK ====================
+
+@app.route('/api/mouvements', methods=['GET'])
+@login_required
+def get_mouvements():
+    produit_id = request.args.get('produit_id')
+    type_mouvement = request.args.get('type')
+    limit = request.args.get('limit', 50)
+    
+    query = MouvementStock.query
+    
+    if produit_id:
+        query = query.filter_by(produit_id=produit_id)
+    if type_mouvement:
+        query = query.filter_by(type_mouvement=type_mouvement)
+    
+    mouvements = query.order_by(MouvementStock.date_mouvement.desc()).limit(limit).all()
+    return jsonify([m.to_dict() for m in mouvements])
+
+@app.route('/api/mouvements', methods=['POST'])
+@login_required
+def create_mouvement():
+    data = request.json
+    
+    produit = Produit.query.get_or_404(data['produit_id'])
+    stock_avant = produit.stock_actuel
+    
+    # Mise à jour du stock selon le type de mouvement
+    if data['type_mouvement'] == 'entrée':
+        produit.stock_actuel += data['quantite']
+    elif data['type_mouvement'] == 'sortie':
+        if produit.stock_actuel < data['quantite']:
+            return jsonify({'error': 'Stock insuffisant'}), 400
+        produit.stock_actuel -= data['quantite']
+    elif data['type_mouvement'] == 'ajustement':
+        produit.stock_actuel = data['quantite']
+    
+    mouvement = MouvementStock(
+        produit_id=data['produit_id'],
+        type_mouvement=data['type_mouvement'],
+        quantite=data['quantite'],
+        quantite_avant=stock_avant,
+        quantite_apres=produit.stock_actuel,
+        motif=data.get('motif'),
+        cout_unitaire=data.get('cout_unitaire'),
+        utilisateur=current_user.username
+    )
+    
+    db.session.add(mouvement)
+    db.session.commit()
+    
+    return jsonify(mouvement.to_dict()), 201
+
+# ==================== ROUTES PARAMÈTRES ====================
+
+@app.route('/api/parametres', methods=['GET'])
+@login_required
+def get_parametres():
+    parametres = ParametreSysteme.query.all()
+    return jsonify([
+        {
+            'cle': p.cle,
+            'valeur': p.valeur,
+            'description': p.description,
+            'type': p.type_valeur
+        }
+        for p in parametres
+    ])
+
+@app.route('/api/parametres', methods=['POST'])
+@login_required
+def set_parametre():
+    if current_user.role != 'admin':
+        return jsonify({'error': 'Accès non autorisé'}), 403
+    
+    data = request.json
+    ParametreSysteme.set_value(
+        data['cle'],
+        data['valeur'],
+        data.get('type_valeur', 'string')
+    )
+    
+    return jsonify({'success': True})
+
+# ==================== TÂCHES AUTOMATIQUES ====================
+
+def tache_verification_quotidienne():
+    """Tâche à exécuter quotidiennement"""
+    with app.app_context():
+        # Vérifier les stocks faibles
+        verifier_stock_faible()
+        
+        # Vérifier les commandes en retard
+        commandes_retard = Commande.query.filter(
+            Commande.date_livraison_prevue < datetime.now(),
+            Commande.statut.in_(['en_attente', 'confirmée'])
+        ).all()
+        
+        if commandes_retard:
+            admins = User.query.filter_by(role='admin', actif=True).all()
+            for admin in admins:
+                envoyer_notification(
+                    admin.id,
+                    'commande',
+                    'Commandes en retard',
+                    f"{len(commandes_retard)} commande(s) en retard de livraison"
+                )
+
+# ==================== INITIALISATION ====================
+
+def init_db():
+    """Initialise la base de données avec des données de démonstration"""
+    with app.app_context():
+        db.create_all()
+        
+        # Vérifier si des données existent déjà
+        if User.query.first() is None:
+            # Créer utilisateur admin
+            admin = User(
+                username='admin',
+                email='admin@gestiostock.com',
+                nom='Admin',
+                prenom='GestioStock',
+                role='admin',
+                telephone='70000000'
+            )
+            admin.set_password('admin123')
+            db.session.add(admin)
+            
+            # Créer utilisateur standard
+            user = User(
+                username='vendeur',
+                email='vendeur@gestiostock.com',
+                nom='Sawadogo',
+                prenom='Marie',
+                role='user',
+                telephone='70111111'
+            )
+            user.set_password('vendeur123')
+            db.session.add(user)
+            
+            db.session.commit()
+            
+            # Catégories
+            cat_elec = Categorie(nom="Électronique", description="Appareils électroniques et accessoires")
+            cat_vete = Categorie(nom="Vêtements", description="Articles vestimentaires")
+            cat_alim = Categorie(nom="Alimentation", description="Produits alimentaires")
+            db.session.add_all([cat_elec, cat_vete, cat_alim])
+            db.session.commit()
+            
+            # Fournisseurs
+            f1 = Fournisseur(
+                nom="TechSupply Burkina",
+                contact="Ibrahim Sawadogo",
+                telephone="70123456",
+                email="contact@techsupply.bf",
+                adresse="Zone industrielle Kossodo",
+                ville="Ouagadougou",
+                conditions_paiement="30 jours",
+                delai_livraison=7
+            )
+            f2 = Fournisseur(
+                nom="Mode & Style",
+                contact="Aminata Ouédraogo",
+                telephone="75654321",
+                email="info@modestyle.bf",
+                adresse="Avenue Kwamé N'Krumah",
+                ville="Ouagadougou",
+                conditions_paiement="Comptant",
+                delai_livraison=3
+            )
+            db.session.add_all([f1, f2])
+            db.session.commit()
+            
+            # Produits
+            p1 = Produit(
+                nom="Ordinateur Portable HP",
+                reference="ORD-HP-001",
+                code_barre="3760123456789",
+                description="HP 15.6\" Intel Core i5, 8GB RAM, 256GB SSD",
+                prix_achat=350000,
+                prix_vente=450000,
+                tva=0,
+                stock_actuel=12,
+                stock_min=3,
+                stock_max=30,
+                categorie_id=cat_elec.id,
+                fournisseur_id=f1.id,
+                unite_mesure="unité",
+                emplacement="Rayon A-1"
+            )
+            
+            p2 = Produit(
+                nom="Smartphone Samsung Galaxy A54",
+                reference="TEL-SAM-A54",
+                code_barre="8806094123456",
+                description="6.4\" AMOLED, 128GB, Triple caméra",
+                prix_achat=180000,
+                prix_vente=250000,
+                tva=0,
+                stock_actuel=25,
+                stock_min=5,
+                stock_max=50,
+                categorie_id=cat_elec.id,
+                fournisseur_id=f1.id,
+                unite_mesure="unité",
+                emplacement="Rayon A-2"
+            )
+            
+            p3 = Produit(
+                nom="T-shirt Coton Premium",
+                reference="TSH-COT-001",
+                code_barre="3250123456789",
+                description="100% Coton, plusieurs couleurs disponibles",
+                prix_achat=3500,
+                prix_vente=7500,
+                tva=0,
+                stock_actuel=150,
+                stock_min=20,
+                stock_max=300,
+                categorie_id=cat_vete.id,
+                fournisseur_id=f2.id,
+                unite_mesure="pièce",
+                emplacement="Rayon B-1"
+            )
+            
+            p4 = Produit(
+                nom="Jean Slim Fit",
+                reference="JEAN-SLIM-001",
+                code_barre="3250123456790",
+                description="Jean stretch confortable, tailles 36-44",
+                prix_achat=8000,
+                prix_vente=15000,
+                tva=0,
+                stock_actuel=80,
+                stock_min=15,
+                stock_max=150,
+                categorie_id=cat_vete.id,
+                fournisseur_id=f2.id,
+                unite_mesure="pièce",
+                emplacement="Rayon B-2"
+            )
+            
+            db.session.add_all([p1, p2, p3, p4])
+            db.session.commit()
+            
+            # Clients
+            c1 = Client(
+                nom="Ouédraogo",
+                prenom="Jean",
+                email="jean.ouedraogo@example.com",
+                telephone="70123456",
+                adresse="Secteur 15, Ouaga 2000",
+                ville="Ouagadougou",
+                type_client="particulier",
+                remise_defaut=0
+            )
+            
+            c2 = Client(
+                nom="Kaboré",
+                prenom="Marie",
+                entreprise="Entreprise ABC SARL",
+                email="marie.kabore@abc.bf",
+                telephone="75654321",
+                adresse="Zone commerciale centrale",
+                ville="Ouagadougou",
+                type_client="professionnel",
+                remise_defaut=5,
+                plafond_credit=1000000
+            )
+            
+            c3 = Client(
+                nom="Sawadogo",
+                prenom="Paul",
+                email="paul.sawadogo@example.com",
+                telephone="76888999",
+                adresse="Secteur 30",
+                ville="Ouagadougou",
+                type_client="particulier"
+            )
+            
+            db.session.add_all([c1, c2, c3])
+            db.session.commit()
+            
+            # Paramètres système
+            params = [
+                ParametreSysteme(cle='nom_entreprise', valeur='GestioStock SARL', type_valeur='string', description='Nom de l\'entreprise'),
+                ParametreSysteme(cle='adresse_entreprise', valeur='Ouagadougou, Burkina Faso', type_valeur='string', description='Adresse'),
+                ParametreSysteme(cle='telephone_entreprise', valeur='70000000', type_valeur='string', description='Téléphone'),
+                ParametreSysteme(cle='email_entreprise', valeur='contact@gestiostock.bf', type_valeur='string', description='Email'),
+                ParametreSysteme(cle='tva_defaut', valeur='18', type_valeur='number', description='TVA par défaut (%)'),
+                ParametreSysteme(cle='alerte_stock_actif', valeur='true', type_valeur='boolean', description='Activer alertes stock'),
+                ParametreSysteme(cle='devise_principale', valeur='XOF', type_valeur='string', description='Devise principale')
+            ]
+            
+            for param in params:
+                db.session.add(param)
+            
+            db.session.commit()
+            
+            print("✅ Base de données initialisée avec succès!")
+            print("👤 Admin: admin / admin123")
+            print("👤 Vendeur: vendeur / vendeur123")
+
+if __name__ == '__main__':
+    init_db()
+    
+    # Lancer la vérification quotidienne (à planifier avec un cron ou scheduler)
+    # import schedule
+    # schedule.every().day.at("08:00").do(tache_verification_quotidienne)
+    
+    app.run(debug=True, host='0.0.0.0', port=5000)

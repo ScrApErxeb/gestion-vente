@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block title %}Clients - GestioStock{% endblock %}
+
+{% block content %}
+<div class="header">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h1>👥 Gestion des Clients</h1>
+            <p>Base de données de vos clients</p>
+        </div>
+        <button class="btn btn-primary" onclick="toggleModal('modal-client')">
+            ➕ Nouveau Client
+        </button>
+    </div>
+</div>
+
+<!-- Statistiques clients -->
+<div class="stat-cards">
+    <div class="stat-card">
+        <div class="icon">👥</div>
+        <div class="label">Total clients</div>
+        <div class="value" id="total-clients">0</div>
+    </div>
+    <div class="stat-card">
+        <div class="icon">👤</div>
+        <div class="label">Particuliers</div>
+        <div class="value" id="clients-particuliers">0</div>
+    </div>
+    <div class="stat-card">
+        <div class="icon">🏢</div>
+        <div class="label">Professionnels</div>
+        <div class="value" id="clients-pro">0</div>
+    </div>
+</div>
+
+<!-- Filtres -->
+<div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <div class="form-row">
+        <div class="form-group" style="margin: 0;">
+            <input type="text" id="search-client" placeholder="🔍 Rechercher par nom, email, téléphone...">
+        </div>
+        <div class="form-group" style="margin: 0;">
+            <select id="filter-type-client" onchange="filtrerClients()">
+                <option value="">Tous les types</option>
+                <option value="particulier">Particuliers</option>
+                <option value="professionnel">Professionnels</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Table des clients -->
+<div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <table id="clients-table">
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Contact</th>
+                <th>Type</th>
+                <th>Ville</th>
+                <th>Total achats</th>
+                <th>Nb achats</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<!-- Modal Client -->
+<div id="modal-client" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modal-client-title">Nouveau Client</h2>
+            <span class="modal-close" onclick="toggleModal('modal-client')">&times;</span>
+        </div>
+        <form id="form-client" onsubmit="saveClient(event)">
+            <input type="hidden" id="client-id">
+            
+            <div class="form-group">
+                <label>Type de client</label>
+                <select name="type_client" id="client-type">
+                    <option value="particulier">Particulier</option>
+                    <option value="professionnel">Professionnel</option>
+                </select>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nom *</label>
+                    <input type="text" name="nom" id="client-nom" required>
+                </div>
+                <div class="form-group">
+                    <label>Prénom</label>
+                    <input type="text" name="prenom" id="client-prenom">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Entreprise</label>
+                <input type="text" name="entreprise" id="client-entreprise">
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" id="client-email">
+                </div>
+                <div class="form-group">
+                    <label>Téléphone *</label>
+                    <input type="tel" name="telephone" id="client-telephone" required>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Adresse</label>
+                <textarea name="adresse" id="client-adresse" rows="2"></textarea>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Ville</label>
+                    <input type="text" name="ville" id="client-ville" value="Ouagadougou">
+                </div>
+                <div class="form-group">
+                    <label>Pays</label>
+                    <input type="text" name="pays" id="client-pays" value="Burkina Faso">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Remise par défaut (%)</label>
+                    <input type="number" name="remise_defaut" id="client-remise" step="0.01" value="0" min="0" max="100">
+                </div>
+                <div class="form-group">
+                    <label>Plafond crédit</label>
+                    <input type="number" name="plafond_credit" id="client-plafond" step="1000" value="0">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea name="notes" id="client-notes" rows="2"></textarea>
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 25px;">
+                <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                <button type="button" class="btn btn-secondary" onclick="toggleModal('modal-client')">❌ Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let clients = [];
+    
+    async function loadClients() {
+        try {
+            const search = document.getElementById('search-client').value;
+            const type = document.getElementById('filter-type-client').value;
+            
+            let url = '/api/clients?';
+            if (search) url += `search=${search}&`;
+            if (type) url += `type=${type}&`;
+            
+            const response = await fetch(url);
+            clients = await response.json();
+            
+            afficherClients(clients);
+            calculerStatsClients(clients);
+        } catch (error) {
+            console.error('Erreur:', error);
+        }
+    }
+    
+    function afficherClients(data) {
+        const tbody = document.querySelector('#clients-table tbody');
+        tbody.innerHTML = data.map(c => `
+            <tr>
+                <td>
+                    <strong>${c.nom} ${c.prenom || ''}</strong>
+                    ${c.entreprise ? `<br><small style="color: #7f8c8d;">${c.entreprise}</small>` : ''}
+                </td>
+                <td>
+                    📧 ${c.email || '-'}<br>
+                    📞 ${c.telephone}
+                </td>
+                <td>
+                    <span class="badge ${c.type_client === 'professionnel' ? 'badge-info' : 'badge-success'}">
+                        ${c.type_client === 'professionnel' ? '🏢 Pro' : '👤 Particulier'}
+                    </span>
+                </td>
+                <td>${c.ville || '-'}</td>
+                <td><strong>${formatCurrency(c.total_achats)}</strong></td>
+                <td>${c.nombre_achats}</td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="editClient(${c.id})" title="Modifier">✏️</button>
+                    <button class="btn btn-primary btn-sm" onclick="voirHistorique(${c.id})" title="Historique">📊</button>
+                </td>
+            </tr>
+        `).join('');
+    }
+    
+    function calculerStatsClients(data) {
+        document.getElementById('total-clients').textContent = data.length;
+        document.getElementById('clients-particuliers').textContent = 
+            data.filter(c => c.type_client === 'particulier').length;
+        document.getElementById('clients-pro').textContent = 
+            data.filter(c => c.type_client === 'professionnel').length;
+    }
+    
+    async function saveClient(event) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData);
+        
+        ['remise_defaut', 'plafond_credit'].forEach(key => {
+            if (data[key]) data[key] = parseFloat(data[key]);
+        });
+        
+        const id = document.getElementById('client-id').value;
+        const method = id ? 'PUT' : 'POST';
+        const url = id ? `/api/clients/${id}` : '/api/clients';
+        
+        try {
+            const response = await fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                toggleModal('modal-client');
+                form.reset();
+                loadClients();
+                alert('✅ Client enregistré avec succès!');
+            } else {
+                const error = await response.json();
+                alert('❌ Erreur: ' + (error.error || 'Erreur inconnue'));
+            }
+        } catch (error) {
+            alert('❌ Erreur de connexion');
+        }
+    }
+    
+    function editClient(id) {
+        const client = clients.find(c => c.id === id);
+        if (!client) return;
+        
+        document.getElementById('modal-client-title').textContent = 'Modifier le client';
+        document.getElementById('client-id').value = client.id;
+        document.getElementById('client-nom').value = client.nom;
+        document.getElementById('client-prenom').value = client.prenom || '';
+        document.getElementById('client-entreprise').value = client.entreprise || '';
+        document.getElementById('client-email').value = client.email || '';
+        document.getElementById('client-telephone').value = client.telephone;
+        document.getElementById('client-adresse').value = client.adresse || '';
+        document.getElementById('client-ville').value = client.ville || '';
+        document.getElementById('client-type').value = client.type_client;
+        document.getElementById('client-remise').value = client.remise_defaut;
+        document.getElementById('client-plafond').value = client.plafond_credit;
+        
+        toggleModal('modal-client');
+    }
+    
+    function voirHistorique(clientId) {
+        // Implémenter l'affichage de l'historique
+        alert('Historique du client #' + clientId);
+    }
+    
+    function filtrerClients() {
+        loadClients();
+    }
+    
+    document.getElementById('search-client').addEventListener('input', () => {
+        clearTimeout(window.searchTimeout);
+        window.searchTimeout = setTimeout(loadClients, 500);
+    });
+    
+    loadClients();
+</script>
+{% endblock %}

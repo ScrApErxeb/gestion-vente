@@ -80,7 +80,7 @@
     <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h3>👥 Utilisateurs</h3>
-            <button class="btn btn-primary btn-sm" onclick="alert('Fonctionnalité à venir')">➕ Ajouter</button>
+            <button class="btn btn-primary btn-sm" onclick="toggleModal('modal-utilisateur')">➕ Ajouter</button>
         </div>
         <div id="users-list">
             <div style="padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px;">
@@ -92,6 +92,7 @@
                     <span style="font-size: 12px; color: #7f8c8d;">{{ current_user.email }}</span>
                 </div>
             </div>
+            <div id="other-users"></div>
         </div>
     </div>
 </div>
@@ -203,6 +204,134 @@
         alert('✅ Paramètres enregistrés!');
     });
     
+    // Chargement des utilisateurs
+    async function loadUsers() {
+        try {
+            const response = await fetch('/api/users');
+            const users = await response.json();
+            
+            const container = document.getElementById('other-users');
+            container.innerHTML = users
+                .filter(u => u.id !== {{ current_user.id }})
+                .map(u => `
+                    <div style="padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <strong>${u.prenom} ${u.nom}</strong>
+                                <span class="badge badge-${u.actif ? 'success' : 'danger'}" style="margin-left: 10px;">${u.role.toUpperCase()}</span>
+                            </div>
+                            <div style="display: flex; gap: 10px; align-items: center;">
+                                <span style="font-size: 12px; color: #7f8c8d;">${u.email}</span>
+                                <button class="btn btn-sm ${u.actif ? 'btn-warning' : 'btn-success'}" 
+                                    onclick="toggleUserStatus(${u.id}, ${u.actif})">${u.actif ? '🔒 Désactiver' : '🔓 Activer'}</button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+        } catch (error) {
+            console.error('Erreur:', error);
+        }
+    }
+    
+    async function saveUser(event) {
+        event.preventDefault();
+        const form = event.target;
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData);
+        
+        try {
+            const response = await fetch('/api/users', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            
+            if (response.ok) {
+                toggleModal('modal-utilisateur');
+                form.reset();
+                loadUsers();
+                alert('✅ Utilisateur ajouté!');
+            } else {
+                const error = await response.json();
+                alert('❌ Erreur: ' + error.message);
+            }
+        } catch (error) {
+            alert('❌ Erreur lors de l\'ajout');
+        }
+    }
+    
+    async function toggleUserStatus(userId, currentStatus) {
+        if (!confirm(currentStatus ? 'Désactiver cet utilisateur?' : 'Activer cet utilisateur?')) return;
+        
+        try {
+            const response = await fetch(`/api/users/${userId}/toggle-status`, {
+                method: 'POST'
+            });
+            
+            if (response.ok) {
+                loadUsers();
+                alert('✅ Statut modifié!');
+            }
+        } catch (error) {
+            alert('❌ Erreur');
+        }
+    }
+
     loadCategories();
+    loadUsers();
 </script>
+
+<!-- Modal Utilisateur -->
+<div id="modal-utilisateur" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Nouvel Utilisateur</h2>
+            <span class="modal-close" onclick="toggleModal('modal-utilisateur')">&times;</span>
+        </div>
+        <form id="form-utilisateur" onsubmit="saveUser(event)">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Prénom *</label>
+                    <input type="text" name="prenom" required>
+                </div>
+                <div class="form-group">
+                    <label>Nom *</label>
+                    <input type="text" name="nom" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email *</label>
+                    <input type="email" name="email" required>
+                </div>
+                <div class="form-group">
+                    <label>Téléphone</label>
+                    <input type="tel" name="telephone">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Nom d'utilisateur *</label>
+                    <input type="text" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label>Rôle *</label>
+                    <select name="role" required>
+                        <option value="user">Utilisateur</option>
+                        <option value="manager">Manager</option>
+                        <option value="admin">Administrateur</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Mot de passe *</label>
+                <input type="password" name="password" required>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+                <button type="button" class="btn btn-secondary" onclick="toggleModal('modal-utilisateur')">❌ Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}

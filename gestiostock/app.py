@@ -1218,12 +1218,104 @@ def convertir_devise_api():
     montant_converti = convertir_devise_util(montant, devise_source, devise_cible)
     
     return jsonify({
+        'montant': montant_converti,
         'montant_source': montant,
         'devise_source': devise_source,
         'montant_cible': montant_converti,
         'devise_cible': devise_cible,
         'taux': app.config['CURRENCIES'][devise_cible]['rate'] / app.config['CURRENCIES'][devise_source]['rate']
     })
+
+
+# ==================== API GESTION UTILISATEURS ====================
+
+@app.route('/api/users', methods=['GET'])
+@login_required
+def liste_utilisateurs_api():
+    """Retourne la liste des utilisateurs"""
+    if current_user.role != 'admin':
+        return jsonify({'message': 'Accès non autorisé'}), 403
+        
+    users = User.query.all()
+    return jsonify([{
+        'id': u.id,
+        'username': u.username,
+        'email': u.email,
+        'nom': u.nom,
+        'prenom': u.prenom,
+        'role': u.role,
+        'telephone': u.telephone,
+        'actif': u.actif,
+        'date_creation': u.date_creation.isoformat() if u.date_creation else None,
+        'dernier_login': u.dernier_login.isoformat() if u.dernier_login else None
+    } for u in users])
+
+@app.route('/api/users', methods=['POST'])
+@login_required
+def ajouter_utilisateur_api():
+    """Ajoute un nouvel utilisateur"""
+    if current_user.role != 'admin':
+        return jsonify({'message': 'Accès non autorisé'}), 403
+        
+    data = request.json
+    
+    # Vérification des données requises
+    required_fields = ['username', 'email', 'password', 'nom', 'prenom', 'role']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'message': f'Le champ {field} est requis'}), 400
+    
+    # Vérification si username/email existe déjà
+    if User.query.filter_by(username=data['username']).first():
+        return jsonify({'message': 'Ce nom d\'utilisateur existe déjà'}), 400
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'message': 'Cet email existe déjà'}), 400
+    
+    # Création du nouvel utilisateur
+    new_user = User(
+        username=data['username'],
+        email=data['email'],
+        password_hash=generate_password_hash(data['password']),
+        nom=data['nom'],
+        prenom=data['prenom'],
+        role=data['role'],
+        telephone=data.get('telephone'),
+        actif=True,
+        date_creation=datetime.utcnow()
+    )
+    
+    try:
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({
+            'message': 'Utilisateur créé avec succès',
+            'id': new_user.id
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'message': 'Erreur lors de la création: ' + str(e)}), 500
+
+@app.route('/api/users/<int:id>/toggle-status', methods=['POST'])
+@login_required
+def toggle_user_status_api(id):
+    """Active/désactive un utilisateur"""
+    if current_user.role != 'admin':
+        return jsonify({'message': 'Accès non autorisé'}), 403
+    
+    user = User.query.get_or_404(id)
+    
+    # Empêcher la désactivation de son propre compte
+    if user.id == current_user.id:
+        return jsonify({'message': 'Vous ne pouvez pas désactiver votre propre compte'}), 400
+    
+    user.actif = not user.actif
+    db.session.commit()
+    
+    return jsonify({
+        'message': f'Utilisateur {"activé" if user.actif else "désactivé"} avec succès',
+        'actif': user.actif
+    })
+
 
 # ==================== GESTION DES ERREURS ====================
 

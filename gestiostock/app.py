@@ -1162,28 +1162,198 @@ def statistiques_page():
     """Page des statistiques"""
     return render_template('statistiques.html')
 
-# ==================== ROUTES CATÉGORIES ====================
 
-@app.route('/api/categories', methods=['GET'])
-@login_required
-def get_categories():
-    categories = Categorie.query.filter_by(actif=True).all()
-    return jsonify([c.to_dict() for c in categories])
 
-@app.route('/api/categories', methods=['POST'])
+# ==================== ROUTES STATISTIQUES COMPLÈTES ====================
+
+from flask import jsonify
+from flask_login import login_required
+from sqlalchemy import func
+from datetime import datetime, timedelta
+
+# ================= STATISTIQUES VENTES =================
+@app.route('/api/stats/ventes')
 @login_required
-def create_categorie():
-    data = request.json
-    
-    categorie = Categorie(
-        nom=data['nom'],
-        description=data.get('description'),
-        parent_id=data.get('parent_id')
-    )
-    db.session.add(categorie)
-    db.session.commit()
-    
-    return jsonify(categorie.to_dict()), 201
+def stats_ventes():
+    periode = request.args.get('periode', 'mois')
+    now = datetime.now()
+
+    if periode == 'jour':
+        debut = datetime(now.year, now.month, now.day)
+    elif periode == 'semaine':
+        debut = now - timedelta(days=now.weekday())  # lundi de la semaine
+    elif periode == 'mois':
+        debut = datetime(now.year, now.month, 1)
+    elif periode == 'annee':
+        debut = datetime(now.year, 1, 1)
+    else:
+        debut = datetime(now.year, now.month, 1)
+
+    ventes = db.session.query(
+        func.sum(Vente.montant_total).label('total'),
+        func.count(Vente.id).label('nb')
+    ).filter(
+        Vente.date_vente >= debut,
+        Vente.statut == 'confirmée'
+    ).first()
+
+    ca_total = ventes.total or 0
+    nb_ventes = ventes.nb or 0
+    panier_moyen = ca_total / nb_ventes if nb_ventes else 0
+
+    # Évolution jour par jour sur la période
+    evolution = []
+    jours = (now - debut).days + 1
+    for i in range(jours):
+        date_i = debut + timedelta(days=i)
+        total_i = db.session.query(func.sum(Vente.montant_total)).filter(
+            func.date(Vente.date_vente) == date_i.date(),
+            Vente.statut == 'confirmée'
+        ).scalar() or 0
+        evolution.append({"date": date_i.strftime("%d %b"), "montant": total_i})
+
+    # Ventes par catégorie
+    ventes_par_categorie = db.session.query(
+        Categorie.nom.label('categorie'),
+        func.sum(CommandeItem.montant_total).label('total')
+    ).join(Produit, Produit.categorie_id == Categorie.id)\
+     .join(CommandeItem, CommandeItem.produit_id == Produit.id)\
+     .join(Commande, CommandeItem.commande_id == Commande.id)\
+     .filter(Commande.statut == 'confirmée', Commande.date_commande >= debut)\
+     .group_by(Categorie.nom).all()
+
+    ventes_cat_list = [{"categorie": c.categorie, "total": c.total} for c in ventes_par_categorie]
+
+    # Ventes par mode de paiement
+    ventes_par_paiement = db.session.query(
+        Commande.mode_paiement,
+        func.sum(Commande.montant_total)
+    ).filter(
+        Commande.statut == 'confirmée',
+        Commande.date_commande >= debut
+    ).group_by(Commande.mode_paiement).all()
+
+    ventes_paiement_list = [{"mode": p[0], "total": p[1]} for p in ventes_par_paiement]
+
+    return jsonify({
+        "ca_total": ca_total,
+        "nb_ventes": nb_ventes,
+        "panier_moyen": panier_moyen,
+        "evolution": evolution,
+        "ventes_par_categorie": ventes_cat_list,
+        "ventes_par_paiement": ventes_paiement_list
+    })
+
+
+# ================= STATISTIQUES PRODUITS =================
+@app.route('/api/stats/produits')
+@login_required
+def stats_produits():
+    top_ventes = db.session.query(
+        Produit.id,
+        Produit.nom,
+        func.sum(CommandeItem.quantite_commandee).label('quantite'),
+        func.sum(CommandeItem.montant_total).label('ca')
+    ).join(CommandeItem, CommandeItem.produit_id == Produit.id)\
+     .join(Commande, CommandeItem.commande_id == Commande.id)\
+     .filter(Commande.statut == 'confirmée')\
+     .group_by(Produit.id)\
+     .order_by(func.sum(CommandeItem.montant_total).desc())\
+     .limit(10).all()
+
+    top_ventes_list = [
+        {"id": p.id, "nom": p.nom, "quantite": p.quantite, "ca": p.ca}
+        for p in top_ventes
+    ]
+
+    return jsonify({"top_ventes": top_ventes_list})
+
+
+# ================= STATISTIQUES CLIENTS =================
+@app.route('/api/stats/clients')
+@login_required
+def stats_clients():
+    # Top clients par achats
+    top_clients = db.session.query(
+        Client.id,
+        Client.nom,
+        func.count(Vente.id).label('nb_achats'),
+        func.sum(Vente.montant_total).label('total')
+    ).join(Vente, Vente.client_id == Client.id)\
+     .filter(Vente.statut == 'confirmée')\
+     .group_by(Client.id)\
+     .order_by(func.sum(Vente.montant_total).desc())\
+     .limit(10).all()
+
+    top_clients_list = [
+        {"id": c.id, "nom": c.nom, "nb_achats": c.nb_achats, "total": c.total}
+        for c in top_clients
+    ]
+
+    # Nouveaux clients par mois
+    debut_annee = datetime(datetime.now().year, 1, 1)
+    nouveaux_par_mois = []
+    for i in range(12):
+        mois = (debut_annee + timedelta(days=30*i)).month
+        annee = (debut_annee + timedelta(days=30*i)).year
+        nb = db.session.query(func.count(Client.id)).filter(
+            func.extract('month', Client.date_creation) == mois,
+            func.extract('year', Client.date_creation) == annee
+        ).scalar() or 0
+        nouveaux_par_mois.append({"mois": f"{mois}/{annee}", "nombre": nb})
+
+    return jsonify({
+        "top_clients": top_clients_list,
+        "nouveaux_par_mois": nouveaux_par_mois
+    })
+
+
+# ================= RAPPORT RENTABILITÉ =================
+@app.route('/api/rapport/rentabilite')
+@login_required
+def rapport_rentabilite():
+    # Chiffre d'affaires et coût total
+    ventes = db.session.query(
+        func.sum(Vente.montant_total).label('ca_total'),
+        func.sum(Produit.prix_achat * CommandeItem.quantite_commandee).label('cout_total')
+    ).join(CommandeItem, CommandeItem.commande_id == Vente.id)\
+     .join(Produit, Produit.id == CommandeItem.produit_id)\
+     .filter(Vente.statut == 'confirmée').first()
+
+    ca_total = ventes.ca_total or 0
+    cout_total = ventes.cout_total or 0
+    benefice_brut = ca_total - cout_total
+    marge_brute = (benefice_brut / ca_total * 100) if ca_total else 0
+
+    # Top produits rentables
+    top_rentables = db.session.query(
+        Produit.id,
+        Produit.nom,
+        func.sum(CommandeItem.quantite_commandee).label('quantite'),
+        func.sum(CommandeItem.montant_total).label('ca'),
+        func.sum((CommandeItem.montant_total - Produit.prix_achat * CommandeItem.quantite_commandee)).label('benefice'),
+        func.sum(Produit.prix_achat * CommandeItem.quantite_commandee).label('cout')
+    ).join(CommandeItem, CommandeItem.produit_id == Produit.id)\
+     .join(Vente, Vente.id == CommandeItem.commande_id)\
+     .filter(Vente.statut == 'confirmée')\
+     .group_by(Produit.id)\
+     .order_by(func.sum((CommandeItem.montant_total - Produit.prix_achat * CommandeItem.quantite_commandee)).desc())\
+     .limit(5).all()
+
+    top_rentables_list = [
+        {"id": p.id, "nom": p.nom, "quantite": p.quantite, "ca": p.ca, "benefice": p.benefice, "cout": p.cout}
+        for p in top_rentables
+    ]
+
+    return jsonify({
+        "resume": {
+            "ca_total": ca_total,
+            "cout_total": cout_total,
+            "benefice_brut": benefice_brut,
+            "marge_brute": marge_brute
+        },
+        "top_rentables": top_rentables_list
+    })
 
 # ==================== ROUTES NOTIFICATIONS ====================
 
@@ -1314,6 +1484,7 @@ def toggle_user_status_api(id):
     return jsonify({
         'message': f'Utilisateur {"activé" if user.actif else "désactivé"} avec succès',
         'actif': user.actif
+
     })
 
 

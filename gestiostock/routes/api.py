@@ -3,10 +3,13 @@ Routes API supplémentaires
 """
 from flask import Blueprint, request, jsonify, send_file
 from flask_login import login_required, current_user
-from models import Notification, User, db
+from models import Notification, User, db, Vente
 from utils.export import exporter_ventes_pdf, exporter_produits_excel
 from utils.helpers import convertir_devise, get_system_parameter, set_system_parameter
 from datetime import datetime, timedelta
+import pandas as pd
+import openpyxl
+from io import BytesIO
 
 api_bp = Blueprint('api', __name__)
 
@@ -61,8 +64,6 @@ def convertir_devise_api():
 @login_required
 def export_ventes_pdf():
     """Exporte les ventes en PDF"""
-    from models import Vente
-    
     date_debut = request.args.get('date_debut')
     date_fin = request.args.get('date_fin')
     
@@ -155,7 +156,6 @@ def set_parametres_systeme():
     
     return jsonify({'success': True})
 
-
 @api_bp.route('/api/users', methods=['POST'])
 @login_required
 def ajouter_utilisateur_api():
@@ -166,7 +166,7 @@ def ajouter_utilisateur_api():
             return jsonify({'message': 'Accès non autorisé'}), 403
             
         data = request.json
-        print(f"📝 Données création utilisateur: {data}")  # Debug
+        print(f"📝 Données création utilisateur: {data}")
         
         # Vérification des données requises
         required_fields = ['username', 'email', 'password', 'nom', 'prenom', 'role']
@@ -206,17 +206,17 @@ def ajouter_utilisateur_api():
         db.session.rollback()
         print(f"❌ Erreur création utilisateur: {e}")
         return jsonify({'message': 'Erreur lors de la création: ' + str(e)}), 500
-    
 
 @api_bp.route('/api/users/<int:user_id>/toggle-status', methods=['POST'])
+@login_required
 def toggle_user_status(user_id):
     try:
         user = User.query.get_or_404(user_id)
-        user.actif = not user.actif  # Inverse le statut
+        user.actif = not user.actif
         db.session.commit()
         
         return jsonify({
-            'message': f'Utilisateur {"activé" if user.is_active else "désactivé"} avec succès',
+            'message': f'Utilisateur {"activé" if user.actif else "désactivé"} avec succès',
             'user_id': user.id,
             'is_active': user.actif,
             'username': user.username
@@ -224,4 +224,143 @@ def toggle_user_status(user_id):
         
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/api/export/ventes/excel', methods=['GET'])
+@login_required
+def export_ventes_excel_route():
+    """Exporte les ventes en Excel (version simplifiée)"""
+    try:
+        # Récupérer les paramètres de date
+        date_debut = request.args.get('date_debut')
+        date_fin = request.args.get('date_fin')
+        
+        # Valider les paramètres
+        if not date_debut or not date_fin:
+            return jsonify({'error': 'Les paramètres date_debut et date_fin sont requis'}), 400
+        
+        # Convertir les dates
+        try:
+            date_debut_obj = datetime.strptime(date_debut, '%Y-%m-%d')
+            date_fin_obj = datetime.strptime(date_fin, '%Y-%m-%d')
+            date_fin_obj = date_fin_obj + timedelta(days=1)
+        except ValueError:
+            return jsonify({'error': 'Format de date invalide. Utilisez YYYY-MM-DD'}), 400
+        
+        print(f"🔍 Recherche ventes du {date_debut} au {date_fin}")
+        
+        # Récupérer les ventes dans la période
+        ventes = Vente.query.filter(
+            Vente.date_vente >= date_debut_obj,
+            Vente.date_vente < date_fin_obj
+        ).all()
+        
+        print(f"📊 {len(ventes)} ventes trouvées")
+        
+        if not ventes:
+            data = [{
+                'Message': f'Aucune vente trouvée pour la période du {date_debut} au {date_fin}'
+            }]
+        else:
+            data = []
+            for vente in ventes:
+                vente_data = vente.to_dict()
+                data.append({
+                    'ID': vente.id,
+                    'Numéro Facture': vente.numero_facture,
+                    'Date': vente.date_vente.strftime('%Y-%m-%d %H:%M') if vente.date_vente else '',
+                    'Client': vente_data.get('client', 'Client anonyme'),
+                    'Produit': vente_data.get('produit', 'Produit inconnu'),
+                    'Quantité': vente.quantite,
+                    'Prix Unitaire': f"{vente.prix_unitaire:.2f}",
+                    'Remise': f"{vente.remise:.2f}",
+                    'Montant Total': f"{vente.montant_total:.2f}",
+                    'Devise': vente.devise,
+                    'Mode Paiement': vente.mode_paiement,
+                    'Statut': vente.statut,
+                    'Statut Paiement': vente.statut_paiement
+                })
+        
+        # Créer le DataFrame et le fichier Excel
+        df = pd.DataFrame(data)
+        output = BytesIO()
+        
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Ventes', index=False)
+            
+            # Ajuster automatiquement la largeur des colonnes
+            worksheet = writer.sheets['Ventes']
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+        
+        output.seek(0)
+        filename = f"ventes_{date_debut}_a_{date_fin}.xlsx"
+        print(f"✅ Export Excel réussi: {filename}")
+        
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        print(f"❌ Erreur export Excel: {str(e)}")
+        return jsonify({'error': f'Erreur lors de l\'export: {str(e)}'}), 500
+    
+
+@api_bp.route('/api/export/ventes/preview', methods=['GET'])
+@login_required
+def preview_ventes_export():
+    """Aperçu des données qui seront exportées"""
+    try:
+        date_debut = request.args.get('date_debut')
+        date_fin = request.args.get('date_fin')
+        
+        if not date_debut or not date_fin:
+            return jsonify({'error': 'Les paramètres date_debut et date_fin sont requis'}), 400
+        
+        # Même logique de récupération que l'export
+        from models.produit import Produit
+        from models.client import Client
+        
+        ventes = db.session.query(
+            Vente, Produit, Client
+        ).join(
+            Produit, Vente.produit_id == Produit.id
+        ).outerjoin(
+            Client, Vente.client_id == Client.id
+        ).filter(
+            Vente.date_vente >= datetime.strptime(date_debut, '%Y-%m-%d'),
+            Vente.date_vente < datetime.strptime(date_fin, '%Y-%m-%d') + timedelta(days=1)
+        ).all()
+        
+        preview_data = []
+        for vente, produit, client in ventes[:5]:  # Limiter à 5 pour l'aperçu
+            preview_data.append({
+                'numero_facture': vente.numero_facture,
+                'date': vente.date_vente.strftime('%Y-%m-%d %H:%M'),
+                'client': f"{client.nom} {client.prenom}" if client else "Client anonyme",
+                'produit': produit.nom,
+                'quantite': vente.quantite,
+                'montant_total': vente.montant_total
+            })
+        
+        return jsonify({
+            'period': f"{date_debut} à {date_fin}",
+            'total_ventes': len(ventes),
+            'preview': preview_data,
+            'export_url': f"/api/export/ventes/excel?date_debut={date_debut}&date_fin={date_fin}"
+        })
+        
+    except Exception as e:
         return jsonify({'error': str(e)}), 500

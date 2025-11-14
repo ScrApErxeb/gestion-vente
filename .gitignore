@@ -2,3 +2,4 @@ gestiostock_pro.db
 instance/
 *.pyc
 __pycache__/
+venv

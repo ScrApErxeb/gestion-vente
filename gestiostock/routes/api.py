@@ -154,3 +154,74 @@ def set_parametres_systeme():
         )
     
     return jsonify({'success': True})
+
+
+@api_bp.route('/api/users', methods=['POST'])
+@login_required
+def ajouter_utilisateur_api():
+    """Ajoute un nouvel utilisateur"""
+    try:
+        # Vérifier les permissions
+        if current_user.role != 'admin':
+            return jsonify({'message': 'Accès non autorisé'}), 403
+            
+        data = request.json
+        print(f"📝 Données création utilisateur: {data}")  # Debug
+        
+        # Vérification des données requises
+        required_fields = ['username', 'email', 'password', 'nom', 'prenom', 'role']
+        for field in required_fields:
+            if field not in data or not data[field]:
+                return jsonify({'message': f'Le champ {field} est requis'}), 400
+        
+        # Vérification si username/email existe déjà
+        if User.query.filter_by(username=data['username']).first():
+            return jsonify({'message': 'Ce nom d\'utilisateur existe déjà'}), 400
+        
+        if User.query.filter_by(email=data['email']).first():
+            return jsonify({'message': 'Cet email existe déjà'}), 400
+        
+        # Création du nouvel utilisateur
+        new_user = User(
+            username=data['username'],
+            email=data['email'],
+            nom=data['nom'],
+            prenom=data['prenom'],
+            role=data['role'],
+            telephone=data.get('telephone'),
+            actif=data.get('actif', True)
+        )
+        new_user.set_password(data['password'])
+        
+        db.session.add(new_user)
+        db.session.commit()
+        
+        print(f"✅ Utilisateur créé: {new_user.username}")
+        return jsonify({
+            'message': 'Utilisateur créé avec succès',
+            'user': new_user.to_dict()
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Erreur création utilisateur: {e}")
+        return jsonify({'message': 'Erreur lors de la création: ' + str(e)}), 500
+    
+
+@api_bp.route('/api/users/<int:user_id>/toggle-status', methods=['POST'])
+def toggle_user_status(user_id):
+    try:
+        user = User.query.get_or_404(user_id)
+        user.actif = not user.actif  # Inverse le statut
+        db.session.commit()
+        
+        return jsonify({
+            'message': f'Utilisateur {"activé" if user.is_active else "désactivé"} avec succès',
+            'user_id': user.id,
+            'is_active': user.actif,
+            'username': user.username
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

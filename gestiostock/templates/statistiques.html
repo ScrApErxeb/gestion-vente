@@ -123,18 +123,20 @@ function toggleModal(modalId) {
 // Gestion des erreurs améliorée
 async function chargerStats(periode) {
     try {
-        showLoading();
+        console.log(`📊 Chargement des stats pour: ${periode}`);
         
-        // Charger les statistiques de ventes avec la nouvelle route
+        // Charger les statistiques de ventes
         const respVentes = await fetch(`/api/stats/ventes?periode=${periode}`);
         if (!respVentes.ok) {
-            throw new Error(`Erreur API: ${respVentes.status}`);
+            throw new Error(`Erreur API ventes: ${respVentes.status}`);
         }
         const dataVentes = await respVentes.json();
         
+        console.log("📈 Données ventes:", dataVentes);
+        
         // Vérifier si les données nécessaires existent
         if (!dataVentes || dataVentes.error) {
-            throw new Error(dataVentes?.error || 'Données non disponibles');
+            throw new Error(dataVentes?.error || 'Données ventes non disponibles');
         }
 
         // Mettre à jour les KPIs avec vérifications
@@ -187,21 +189,159 @@ async function chargerStats(periode) {
             }
         });
         
-        // Continuer avec les autres graphiques...
+        // Graphique par catégorie avec vérification
         await chargerGraphiquesCategories(dataVentes);
+        
+        // Charger stats produits avec gestion d'erreur
         await chargerStatsProduits();
+        
+        // Charger stats clients avec gestion d'erreur
         await chargerStatsClients();
+        
+        // Charger analyse de rentabilité avec gestion d'erreur
         await chargerRentabilite();
         
-        hideLoading();
+        console.log("✅ Toutes les statistiques chargées avec succès");
         
     } catch (error) {
-        console.error('Erreur lors du chargement des statistiques:', error);
-        hideLoading();
+        console.error('❌ Erreur lors du chargement des statistiques:', error);
         alert('❌ Erreur lors du chargement des statistiques: ' + error.message);
     }
 }
 
+// Fonction séparée pour charger les produits
+async function chargerStatsProduits() {
+    try {
+        const respProduits = await fetch('/api/stats/produits');
+        if (!respProduits.ok) {
+            throw new Error(`Erreur produits: ${respProduits.status}`);
+        }
+        
+        const dataProduits = await respProduits.json();
+        console.log("📦 Données produits:", dataProduits);
+        
+        // Vérification sécurisée
+        const topProduits = Array.isArray(dataProduits?.top_ventes) ? dataProduits.top_ventes : [];
+        
+        const tbodyProduits = document.querySelector('#table-top-produits tbody');
+        if (topProduits.length > 0) {
+            tbodyProduits.innerHTML = topProduits.slice(0, 10).map((p, i) => `
+                <tr>
+                    <td><strong>${i + 1}</strong></td>
+                    <td>${p.nom || 'Produit inconnu'}</td>
+                    <td><strong>${p.quantite || 0}</strong></td>
+                    <td style="color: #1abc9c; font-weight: 600;">${formatCurrency(p.ca || 0)}</td>
+                </tr>
+            `).join('');
+        } else {
+            tbodyProduits.innerHTML = `
+                <tr>
+                    <td colspan="4" style="text-align: center; color: #7f8c8d; padding: 20px;">
+                        Aucune donnée de vente disponible
+                    </td>
+                </tr>
+            `;
+        }
+        
+    } catch (error) {
+        console.error('❌ Erreur produits:', error);
+        document.querySelector('#table-top-produits tbody').innerHTML = `
+            <tr>
+                <td colspan="4" style="text-align: center; color: #e74c3c; padding: 20px;">
+                    Erreur de chargement des données produits
+                </td>
+            </tr>
+        `;
+    }
+}
+
+// Fonction séparée pour charger les clients
+async function chargerStatsClients() {
+    try {
+        const respClients = await fetch('/api/stats/clients');
+        if (!respClients.ok) {
+            throw new Error(`Erreur clients: ${respClients.status}`);
+        }
+        
+        const dataClients = await respClients.json();
+        console.log("👥 Données clients:", dataClients);
+        
+        // Vérification sécurisée
+        const topClients = Array.isArray(dataClients?.top_clients) ? dataClients.top_clients : [];
+        
+        const tbodyClients = document.querySelector('#table-top-clients tbody');
+        if (topClients.length > 0) {
+            tbodyClients.innerHTML = topClients.slice(0, 10).map((c, i) => `
+                <tr>
+                    <td><strong>${i + 1}</strong></td>
+                    <td>${c.nom || 'Client inconnu'}</td>
+                    <td>${c.nb_achats || 0}</td>
+                    <td style="color: #1abc9c; font-weight: 600;">${formatCurrency(c.total || 0)}</td>
+                </tr>
+            `).join('');
+        } else {
+            tbodyClients.innerHTML = `
+                <tr>
+                    <td colspan="4" style="text-align: center; color: #7f8c8d; padding: 20px;">
+                        Aucune donnée client disponible
+                    </td>
+                </tr>
+            `;
+        }
+        
+        // Graphique clients (nouveaux par mois)
+        if (charts.clients) charts.clients.destroy();
+        const ctxClients = document.getElementById('chart-clients').getContext('2d');
+        
+        const nouveauxClientsData = Array.isArray(dataClients.nouveaux_par_mois) ? dataClients.nouveaux_par_mois : [];
+        charts.clients = new Chart(ctxClients, {
+            type: 'bar',
+            data: {
+                labels: nouveauxClientsData.map(m => m?.mois || ''),
+                datasets: [{
+                    label: 'Nouveaux clients',
+                    data: nouveauxClientsData.map(m => m?.nombre || 0),
+                    backgroundColor: '#3498db',
+                    borderRadius: 5
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {display: false}
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('❌ Erreur clients:', error);
+        document.querySelector('#table-top-clients tbody').innerHTML = `
+            <tr>
+                <td colspan="4" style="text-align: center; color: #e74c3c; padding: 20px;">
+                    Erreur de chargement des données clients
+                </td>
+            </tr>
+        `;
+    }
+}
+
+// Fonction utilitaire manquante
+function formatCurrency(amount) {
+    if (amount === null || amount === undefined) return '0 F';
+    return new Intl.NumberFormat('fr-FR', {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0
+    }).format(amount) + ' F';
+}
 // Fonctions auxiliaires pour diviser le code
 async function chargerGraphiquesCategories(dataVentes) {
     // Graphique par catégorie avec vérification

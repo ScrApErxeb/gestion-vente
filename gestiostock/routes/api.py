@@ -364,3 +364,188 @@ def preview_ventes_export():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+
+@api_bp.route('/api/export/all-data', methods=['GET'])
+@login_required
+def export_all_data():
+    """Exporte toutes les données de l'application en Excel (multi-feuilles)"""
+    try:
+        # Vérifier les permissions admin
+        if current_user.role != 'admin':
+            return jsonify({'message': 'Accès non autorisé'}), 403
+        
+        print("🔄 Début de l'export de toutes les données...")
+        
+        # Créer un fichier Excel en mémoire avec plusieurs feuilles
+        output = BytesIO()
+        
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            # === FEUILLE 1: UTILISATEURS ===
+            users = User.query.all()
+            if users:
+                users_data = []
+                for user in users:
+                    users_data.append({
+                        'ID': user.id,
+                        'Username': user.username,
+                        'Email': user.email,
+                        'Nom': user.nom,
+                        'Prénom': user.prenom,
+                        'Rôle': user.role,
+                        'Téléphone': user.telephone or '',
+                        'Actif': 'Oui' if user.actif else 'Non',
+                        'Date Création': user.date_creation.strftime('%Y-%m-%d %H:%M') if user.date_creation else '',
+                        'Dernier Login': user.dernier_login.strftime('%Y-%m-%d %H:%M') if user.dernier_login else ''
+                    })
+                df_users = pd.DataFrame(users_data)
+                df_users.to_excel(writer, sheet_name='Utilisateurs', index=False)
+                print(f"✅ {len(users)} utilisateurs exportés")
+            
+            # === FEUILLE 2: VENTES ===
+            ventes = Vente.query.all()
+            if ventes:
+                ventes_data = []
+                for vente in ventes:
+                    vente_dict = vente.to_dict()
+                    ventes_data.append({
+                        'ID': vente.id,
+                        'Numéro Facture': vente.numero_facture,
+                        'Date': vente.date_vente.strftime('%Y-%m-%d %H:%M') if vente.date_vente else '',
+                        'Client': vente_dict.get('client', 'Client anonyme'),
+                        'Produit': vente_dict.get('produit', 'Produit inconnu'),
+                        'Quantité': vente.quantite,
+                        'Prix Unitaire': f"{vente.prix_unitaire:.2f}",
+                        'Remise': f"{vente.remise:.2f}",
+                        'Montant Total': f"{vente.montant_total:.2f}",
+                        'Devise': vente.devise,
+                        'Mode Paiement': vente.mode_paiement,
+                        'Statut': vente.statut,
+                        'Statut Paiement': vente.statut_paiement
+                    })
+                df_ventes = pd.DataFrame(ventes_data)
+                df_ventes.to_excel(writer, sheet_name='Ventes', index=False)
+                print(f"✅ {len(ventes)} ventes exportées")
+            
+            # === FEUILLE 3: PRODUITS ===
+            try:
+                from models.produit import Produit
+                produits = Produit.query.all()
+                if produits:
+                    produits_data = []
+                    for produit in produits:
+                        produits_data.append({
+                            'ID': produit.id,
+                            'Nom': produit.nom,
+                            'Description': produit.description or '',
+                            'Prix': f"{produit.prix:.2f}" if hasattr(produit, 'prix') else '',
+                            'Stock': produit.stock if hasattr(produit, 'stock') else '',
+                            'Catégorie': produit.categorie if hasattr(produit, 'categorie') else '',
+                            'Actif': 'Oui' if produit.actif else 'Non'
+                        })
+                    df_produits = pd.DataFrame(produits_data)
+                    df_produits.to_excel(writer, sheet_name='Produits', index=False)
+                    print(f"✅ {len(produits)} produits exportés")
+            except Exception as e:
+                print(f"⚠️ Erreur export produits: {e}")
+            
+            # === FEUILLE 4: CLIENTS ===
+            try:
+                from models.client import Client
+                clients = Client.query.all()
+                if clients:
+                    clients_data = []
+                    for client in clients:
+                        clients_data.append({
+                            'ID': client.id,
+                            'Nom': client.nom,
+                            'Prénom': client.prenom,
+                            'Email': client.email or '',
+                            'Téléphone': client.telephone or '',
+                            'Adresse': client.adresse or '',
+                            'Entreprise': client.entreprise or '',
+                            'Date Inscription': client.date_inscription.strftime('%Y-%m-%d') if hasattr(client, 'date_inscription') and client.date_inscription else ''
+                        })
+                    df_clients = pd.DataFrame(clients_data)
+                    df_clients.to_excel(writer, sheet_name='Clients', index=False)
+                    print(f"✅ {len(clients)} clients exportés")
+            except Exception as e:
+                print(f"⚠️ Erreur export clients: {e}")
+            
+            # === FEUILLE 5: STATISTIQUES GÉNÉRALES ===
+            stats_data = {
+                'Statistique': [
+                    'Date de génération',
+                    'Total Utilisateurs',
+                    'Total Ventes', 
+                    'Total Produits',
+                    'Total Clients',
+                    'Chiffre d\'affaires total'
+                ],
+                'Valeur': [
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    len(users),
+                    len(ventes),
+                    len(produits) if 'produits' in locals() else 'N/A',
+                    len(clients) if 'clients' in locals() else 'N/A',
+                    f"{sum([v.montant_total for v in ventes]):.2f} XOF" if ventes else '0.00 XOF'
+                ]
+            }
+            df_stats = pd.DataFrame(stats_data)
+            df_stats.to_excel(writer, sheet_name='Statistiques', index=False)
+        
+        output.seek(0)
+        
+        # Nom du fichier avec timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"export_complet_{timestamp}.xlsx"
+        
+        print(f"✅ Export complet réussi: {filename}")
+        
+        return send_file(
+            output,
+            as_attachment=True,
+            download_name=filename,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+    except Exception as e:
+        print(f"❌ Erreur export complet: {str(e)}")
+        return jsonify({'error': f'Erreur lors de l\'export complet: {str(e)}'}), 500
+    
+
+@api_bp.route('/api/notifications/nettoyer', methods=['POST'])
+@login_required
+def nettoyer_notifications():
+    """Supprime toutes les notifications lues"""
+    try:
+        if current_user.role != 'admin':
+            return jsonify({'message': 'Accès non autorisé'}), 403
+        
+        # Compter le nombre de notifications avant suppression
+        count_avant = Notification.query.filter_by(user_id=current_user.id).count()
+        
+        # Supprimer les notifications lues
+        Notification.query.filter_by(
+            user_id=current_user.id,
+            lue=True
+        ).delete()
+        
+        db.session.commit()
+        
+        # Compter après suppression
+        count_apres = Notification.query.filter_by(user_id=current_user.id).count()
+        notifications_supprimees = count_avant - count_apres
+        
+        print(f"🗑️ {notifications_supprimees} notifications nettoyées")
+        
+        return jsonify({
+            'success': True,
+            'message': f'{notifications_supprimees} notifications supprimées',
+            'notifications_supprimees': notifications_supprimees
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Erreur nettoyage notifications: {e}")
+        return jsonify({'error': str(e)}), 500

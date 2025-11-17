@@ -113,6 +113,52 @@
     </div>
 </div>
 
+<!-- Ajouter cette section après "Actions Système" -->
+<div style="background: white; padding: 25px; border-radius: 12px; margin-top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <h3 style="margin-bottom: 20px;">🚀 Contrôle du Serveur</h3>
+    
+    <!-- Statut du système -->
+    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+        <div style="font-weight: bold;">Statut:</div>
+        <div id="system-status" style="padding: 5px 12px; border-radius: 20px; background: #28a745; color: white; font-size: 12px;">
+            🔍 Vérification...
+        </div>
+        <div id="system-info" style="margin-left: auto; font-size: 12px; color: #666;"></div>
+    </div>
+
+    <!-- Boutons de contrôle -->
+    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+        <button class="btn btn-success" onclick="controlSystem('start')" id="btn-start">
+            ▶️ Démarrer le Serveur
+        </button>
+        <button class="btn btn-warning" onclick="controlSystem('restart')" id="btn-restart">
+            🔄 Redémarrer
+        </button>
+        <button class="btn btn-danger" onclick="controlSystem('stop')" id="btn-stop">
+            ⏹️ Arrêter
+        </button>
+        <button class="btn btn-info" onclick="refreshSystemStatus()" id="btn-refresh">
+            🔃 Actualiser
+        </button>
+    </div>
+
+    <!-- Logs système -->
+    <div style="margin-top: 20px;">
+        <h4 style="margin-bottom: 10px;">📝 Journal du Système</h4>
+        <div id="system-logs" style="background: #1a1a1a; color: #00ff00; padding: 15px; border-radius: 8px; height: 150px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px;">
+            <div>> Système initialisé...</div>
+        </div>
+        <div style="margin-top: 10px; display: flex; gap: 10px;">
+            <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
+                🗑️ Effacer les logs
+            </button>
+            <button class="btn btn-sm btn-outline-secondary" onclick="exportLogs()">
+                📥 Exporter logs
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Modal Catégorie -->
 <div id="modal-categorie" class="modal">
     <div class="modal-content">
@@ -415,34 +461,7 @@ document.head.appendChild(style);
         alert('✅ Paramètres enregistrés!');
     });
     
-    // Chargement des utilisateurs
-    async function loadUsers() {
-        try {
-            const response = await fetch('/api/users');
-            const users = await response.json();
-            
-            const container = document.getElementById('other-users');
-            container.innerHTML = users
-                .filter(u => u.id !== {{ current_user.id }})
-                .map(u => `
-                    <div style="padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                            <div>
-                                <strong>${u.prenom} ${u.nom}</strong>
-                                <span class="badge badge-${u.actif ? 'success' : 'danger'}" style="margin-left: 10px;">${u.role.toUpperCase()}</span>
-                            </div>
-                            <div style="display: flex; gap: 10px; align-items: center;">
-                                <span style="font-size: 12px; color: #7f8c8d;">${u.email}</span>
-                                <button class="btn btn-sm ${u.actif ? 'btn-warning' : 'btn-success'}" 
-                                    onclick="toggleUserStatus(${u.id}, ${u.actif})">${u.actif ? '🔒 Désactiver' : '🔓 Activer'}</button>
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-        } catch (error) {
-            console.error('Erreur:', error);
-        }
-    }
+ 
     
     async function saveUser(event) {
         event.preventDefault();
@@ -496,6 +515,139 @@ document.head.appendChild(style);
     async function reinitialiserBaseDeDonnees() {
         showNotification('⚠️ Fonctionnalité désactivée en mode démonstration', 'warning');
     }
+
+// === CONTRÔLE SYSTÈME ===
+
+// Mettre à jour le statut du système
+async function refreshSystemStatus() {
+    try {
+        const response = await fetch('/api/system/status');
+        const data = await response.json();
+        
+        const statusElement = document.getElementById('system-status');
+        const infoElement = document.getElementById('system-info');
+        
+        if (data.status === 'running') {
+            statusElement.innerHTML = '🟢 EN MARCHE';
+            statusElement.style.background = '#28a745';
+        } else {
+            statusElement.innerHTML = '🔴 ARRÊTÉ';
+            statusElement.style.background = '#dc3545';
+        }
+        
+        infoElement.innerHTML = `Version ${data.version} | Démarrage: ${data.started_at}`;
+        
+        addLog(`🔍 Statut système: ${data.status}`);
+        
+    } catch (error) {
+        document.getElementById('system-status').innerHTML = '❌ HORS LIGNE';
+        document.getElementById('system-status').style.background = '#6c757d';
+        addLog('❌ Impossible de contacter le serveur');
+    }
+}
+
+// Contrôler le système
+async function controlSystem(action) {
+    const actions = {
+        'start': { text: 'démarrage', emoji: '▶️' },
+        'stop': { text: 'arrêt', emoji: '⏹️' }, 
+        'restart': { text: 'redémarrage', emoji: '🔄' }
+    };
+    
+    addLog(`${actions[action].emoji} Tentative de ${actions[action].text} du système...`);
+    
+    // Désactiver les boutons temporairement
+    document.getElementById('btn-start').disabled = true;
+    document.getElementById('btn-stop').disabled = true;
+    document.getElementById('btn-restart').disabled = true;
+    
+    try {
+        const response = await fetch('/api/system/control', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ action: action })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            addLog(`✅ ${data.message}`);
+            showNotification(data.message, 'success');
+            
+            // Mettre à jour le statut après un délai
+            setTimeout(refreshSystemStatus, 2000);
+        } else {
+            addLog(`❌ Erreur: ${data.message}`);
+            showNotification(data.message, 'error');
+        }
+        
+    } catch (error) {
+        addLog(`❌ Erreur réseau: ${error.message}`);
+        showNotification('Erreur de communication avec le serveur', 'error');
+    } finally {
+        // Réactiver les boutons
+        setTimeout(() => {
+            document.getElementById('btn-start').disabled = false;
+            document.getElementById('btn-stop').disabled = false; 
+            document.getElementById('btn-restart').disabled = false;
+        }, 3000);
+    }
+}
+
+// Gestion des logs
+function addLog(message) {
+    const logsDiv = document.getElementById('system-logs');
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = document.createElement('div');
+    logEntry.innerHTML = `<span style="color: #888;">[${timestamp}]</span> ${message}`;
+    logsDiv.appendChild(logEntry);
+    logsDiv.scrollTop = logsDiv.scrollHeight;
+}
+
+function clearLogs() {
+    document.getElementById('system-logs').innerHTML = '<div>> Journal effacé...</div>';
+    addLog('🗑️ Journal effacé par l\'utilisateur');
+}
+
+function exportLogs() {
+    const logs = document.getElementById('system-logs').innerText;
+    const blob = new Blob([logs], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `system-logs-${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    addLog('📥 Journal exporté');
+}
+
+// === INITIALISATION ===
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialiser le contrôle système
+    refreshSystemStatus();
+    
+    // Actualiser le statut toutes les 30 secondes
+    setInterval(refreshSystemStatus, 30000);
+    
+    // Premier log
+    addLog('🚀 Module de contrôle système initialisé');
+});
+
+// Améliorer la fonction showNotification existante
+function showNotification(message, type = 'info') {
+    // Votre code de notification existant, mais avec support des types
+    const types = {
+        'success': { bg: '#28a745', emoji: '✅' },
+        'error': { bg: '#dc3545', emoji: '❌' },
+        'warning': { bg: '#ffc107', emoji: '⚠️' },
+        'info': { bg: '#17a2b8', emoji: 'ℹ️' }
+    };
+    
+    const config = types[type] || types.info;
+    alert(`${config.emoji} ${message}`); // Remplacer par votre système de notifications
+}
 
     // Fonction utilitaire pour afficher les notifications
     function showNotification(message, type = 'info') {

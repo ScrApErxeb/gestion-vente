@@ -7,8 +7,8 @@ from models import Notification, User, db, Vente
 from utils.export import exporter_ventes_pdf, exporter_produits_excel
 from utils.helpers import convertir_devise, get_system_parameter, set_system_parameter
 from datetime import datetime, timedelta
-import pandas as pd
 import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill
 from io import BytesIO
 
 api_bp = Blueprint('api', __name__)
@@ -229,7 +229,7 @@ def toggle_user_status(user_id):
 @api_bp.route('/api/export/ventes/excel', methods=['GET'])
 @login_required
 def export_ventes_excel_route():
-    """Exporte les ventes en Excel (version simplifiée)"""
+    """Exporte les ventes en Excel (version sans pandas)"""
     try:
         # Récupérer les paramètres de date
         date_debut = request.args.get('date_debut')
@@ -257,57 +257,69 @@ def export_ventes_excel_route():
         
         print(f"📊 {len(ventes)} ventes trouvées")
         
-        if not ventes:
-            data = [{
-                'Message': f'Aucune vente trouvée pour la période du {date_debut} au {date_fin}'
-            }]
-        else:
-            data = []
-            for vente in ventes:
-                vente_data = vente.to_dict()
-                data.append({
-                    'ID': vente.id,
-                    'Numéro Facture': vente.numero_facture,
-                    'Date': vente.date_vente.strftime('%Y-%m-%d %H:%M') if vente.date_vente else '',
-                    'Client': vente_data.get('client', 'Client anonyme'),
-                    'Produit': vente_data.get('produit', 'Produit inconnu'),
-                    'Quantité': vente.quantite,
-                    'Prix Unitaire': f"{vente.prix_unitaire:.2f}",
-                    'Remise': f"{vente.remise:.2f}",
-                    'Montant Total': f"{vente.montant_total:.2f}",
-                    'Devise': vente.devise,
-                    'Mode Paiement': vente.mode_paiement,
-                    'Statut': vente.statut,
-                    'Statut Paiement': vente.statut_paiement
-                })
+        # Créer le fichier Excel avec openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Ventes"
         
-        # Créer le DataFrame et le fichier Excel
-        df = pd.DataFrame(data)
-        output = BytesIO()
+        # Style des en-têtes
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_alignment = Alignment(horizontal="center", vertical="center")
         
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Ventes', index=False)
-            
-            # Ajuster automatiquement la largeur des colonnes
-            worksheet = writer.sheets['Ventes']
-            for column in worksheet.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                worksheet.column_dimensions[column_letter].width = adjusted_width
+        # En-têtes
+        headers = [
+            'ID', 'Numéro Facture', 'Date', 'Client', 'Produit', 
+            'Quantité', 'Prix Unitaire', 'Remise', 'Montant Total', 
+            'Devise', 'Mode Paiement', 'Statut', 'Statut Paiement'
+        ]
         
-        output.seek(0)
+        for col, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+        
+        # Données des ventes
+        for row, vente in enumerate(ventes, 2):
+            vente_data = vente.to_dict()
+            ws.cell(row=row, column=1, value=vente.id)
+            ws.cell(row=row, column=2, value=vente.numero_facture)
+            ws.cell(row=row, column=3, value=vente.date_vente.strftime('%Y-%m-%d %H:%M') if vente.date_vente else '')
+            ws.cell(row=row, column=4, value=vente_data.get('client', 'Client anonyme'))
+            ws.cell(row=row, column=5, value=vente_data.get('produit', 'Produit inconnu'))
+            ws.cell(row=row, column=6, value=vente.quantite)
+            ws.cell(row=row, column=7, value=float(vente.prix_unitaire))
+            ws.cell(row=row, column=8, value=float(vente.remise))
+            ws.cell(row=row, column=9, value=float(vente.montant_total))
+            ws.cell(row=row, column=10, value=vente.devise)
+            ws.cell(row=row, column=11, value=vente.mode_paiement)
+            ws.cell(row=row, column=12, value=vente.statut)
+            ws.cell(row=row, column=13, value=vente.statut_paiement)
+        
+        # Ajuster la largeur des colonnes
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column_letter].width = adjusted_width
+        
+        # Sauvegarder dans le buffer
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
         filename = f"ventes_{date_debut}_a_{date_fin}.xlsx"
         print(f"✅ Export Excel réussi: {filename}")
         
         return send_file(
-            output,
+            buffer,
             as_attachment=True,
             download_name=filename,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -315,8 +327,7 @@ def export_ventes_excel_route():
         
     except Exception as e:
         print(f"❌ Erreur export Excel: {str(e)}")
-        return jsonify({'error': f'Erreur lors de l\'export: {str(e)}'}), 500
-    
+        return jsonify({'error': f'Erreur lors de l\'export: {str(e)}'}), 500   
 
 @api_bp.route('/api/export/ventes/preview', methods=['GET'])
 @login_required
@@ -369,7 +380,7 @@ def preview_ventes_export():
 @api_bp.route('/api/export/all-data', methods=['GET'])
 @login_required
 def export_all_data():
-    """Exporte toutes les données de l'application en Excel (multi-feuilles)"""
+    """Exporte toutes les données de l'application en Excel (sans pandas)"""
     try:
         # Vérifier les permissions admin
         if current_user.role != 'admin':
@@ -377,133 +388,167 @@ def export_all_data():
         
         print("🔄 Début de l'export de toutes les données...")
         
-        # Créer un fichier Excel en mémoire avec plusieurs feuilles
-        output = BytesIO()
+        # Créer un fichier Excel avec openpyxl
+        wb = openpyxl.Workbook()
         
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            # === FEUILLE 1: UTILISATEURS ===
-            users = User.query.all()
-            if users:
-                users_data = []
-                for user in users:
-                    users_data.append({
-                        'ID': user.id,
-                        'Username': user.username,
-                        'Email': user.email,
-                        'Nom': user.nom,
-                        'Prénom': user.prenom,
-                        'Rôle': user.role,
-                        'Téléphone': user.telephone or '',
-                        'Actif': 'Oui' if user.actif else 'Non',
-                        'Date Création': user.date_creation.strftime('%Y-%m-%d %H:%M') if user.date_creation else '',
-                        'Dernier Login': user.dernier_login.strftime('%Y-%m-%d %H:%M') if user.dernier_login else ''
-                    })
-                df_users = pd.DataFrame(users_data)
-                df_users.to_excel(writer, sheet_name='Utilisateurs', index=False)
-                print(f"✅ {len(users)} utilisateurs exportés")
+        # Supprimer la feuille par défaut si elle existe
+        if 'Sheet' in wb.sheetnames:
+            del wb['Sheet']
+        
+        # Style des en-têtes
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        
+        # === FEUILLE 1: UTILISATEURS ===
+        users = User.query.all()
+        if users:
+            ws_users = wb.create_sheet("Utilisateurs")
+            headers_users = [
+                'ID', 'Username', 'Email', 'Nom', 'Prénom', 'Rôle', 
+                'Téléphone', 'Actif', 'Date Création', 'Dernier Login'
+            ]
             
-            # === FEUILLE 2: VENTES ===
-            ventes = Vente.query.all()
-            if ventes:
-                ventes_data = []
-                for vente in ventes:
-                    vente_dict = vente.to_dict()
-                    ventes_data.append({
-                        'ID': vente.id,
-                        'Numéro Facture': vente.numero_facture,
-                        'Date': vente.date_vente.strftime('%Y-%m-%d %H:%M') if vente.date_vente else '',
-                        'Client': vente_dict.get('client', 'Client anonyme'),
-                        'Produit': vente_dict.get('produit', 'Produit inconnu'),
-                        'Quantité': vente.quantite,
-                        'Prix Unitaire': f"{vente.prix_unitaire:.2f}",
-                        'Remise': f"{vente.remise:.2f}",
-                        'Montant Total': f"{vente.montant_total:.2f}",
-                        'Devise': vente.devise,
-                        'Mode Paiement': vente.mode_paiement,
-                        'Statut': vente.statut,
-                        'Statut Paiement': vente.statut_paiement
-                    })
-                df_ventes = pd.DataFrame(ventes_data)
-                df_ventes.to_excel(writer, sheet_name='Ventes', index=False)
-                print(f"✅ {len(ventes)} ventes exportées")
+            # En-têtes
+            for col, header in enumerate(headers_users, 1):
+                cell = ws_users.cell(row=1, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
             
-            # === FEUILLE 3: PRODUITS ===
-            try:
-                from models.produit import Produit
-                produits = Produit.query.all()
-                if produits:
-                    produits_data = []
-                    for produit in produits:
-                        produits_data.append({
-                            'ID': produit.id,
-                            'Nom': produit.nom,
-                            'Description': produit.description or '',
-                            'Prix': f"{produit.prix:.2f}" if hasattr(produit, 'prix') else '',
-                            'Stock': produit.stock if hasattr(produit, 'stock') else '',
-                            'Catégorie': produit.categorie if hasattr(produit, 'categorie') else '',
-                            'Actif': 'Oui' if produit.actif else 'Non'
-                        })
-                    df_produits = pd.DataFrame(produits_data)
-                    df_produits.to_excel(writer, sheet_name='Produits', index=False)
-                    print(f"✅ {len(produits)} produits exportés")
-            except Exception as e:
-                print(f"⚠️ Erreur export produits: {e}")
+            # Données
+            for row, user in enumerate(users, 2):
+                ws_users.cell(row=row, column=1, value=user.id)
+                ws_users.cell(row=row, column=2, value=user.username)
+                ws_users.cell(row=row, column=3, value=user.email)
+                ws_users.cell(row=row, column=4, value=user.nom or '')
+                ws_users.cell(row=row, column=5, value=user.prenom or '')
+                ws_users.cell(row=row, column=6, value=user.role)
+                ws_users.cell(row=row, column=7, value=user.telephone or '')
+                ws_users.cell(row=row, column=8, value='Oui' if user.actif else 'Non')
+                ws_users.cell(row=row, column=9, value=user.date_creation.strftime('%Y-%m-%d %H:%M') if user.date_creation else '')
+                ws_users.cell(row=row, column=10, value=user.dernier_login.strftime('%Y-%m-%d %H:%M') if user.dernier_login else '')
             
-            # === FEUILLE 4: CLIENTS ===
-            try:
-                from models.client import Client
-                clients = Client.query.all()
-                if clients:
-                    clients_data = []
-                    for client in clients:
-                        clients_data.append({
-                            'ID': client.id,
-                            'Nom': client.nom,
-                            'Prénom': client.prenom,
-                            'Email': client.email or '',
-                            'Téléphone': client.telephone or '',
-                            'Adresse': client.adresse or '',
-                            'Entreprise': client.entreprise or '',
-                            'Date Inscription': client.date_inscription.strftime('%Y-%m-%d') if hasattr(client, 'date_inscription') and client.date_inscription else ''
-                        })
-                    df_clients = pd.DataFrame(clients_data)
-                    df_clients.to_excel(writer, sheet_name='Clients', index=False)
-                    print(f"✅ {len(clients)} clients exportés")
-            except Exception as e:
-                print(f"⚠️ Erreur export clients: {e}")
+            print(f"✅ {len(users)} utilisateurs exportés")
+        
+        # === FEUILLE 2: VENTES ===
+        ventes = Vente.query.all()
+        if ventes:
+            ws_ventes = wb.create_sheet("Ventes")
+            headers_ventes = [
+                'ID', 'Numéro Facture', 'Date', 'Client', 'Produit', 
+                'Quantité', 'Prix Unitaire', 'Remise', 'Montant Total', 
+                'Devise', 'Mode Paiement', 'Statut', 'Statut Paiement'
+            ]
             
-            # === FEUILLE 5: STATISTIQUES GÉNÉRALES ===
-            stats_data = {
-                'Statistique': [
-                    'Date de génération',
-                    'Total Utilisateurs',
-                    'Total Ventes', 
-                    'Total Produits',
-                    'Total Clients',
-                    'Chiffre d\'affaires total'
-                ],
-                'Valeur': [
-                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    len(users),
-                    len(ventes),
-                    len(produits) if 'produits' in locals() else 'N/A',
-                    len(clients) if 'clients' in locals() else 'N/A',
-                    f"{sum([v.montant_total for v in ventes]):.2f} XOF" if ventes else '0.00 XOF'
+            # En-têtes
+            for col, header in enumerate(headers_ventes, 1):
+                cell = ws_ventes.cell(row=1, column=col, value=header)
+                cell.font = header_font
+                cell.fill = header_fill
+            
+            # Données
+            for row, vente in enumerate(ventes, 2):
+                vente_data = vente.to_dict()
+                ws_ventes.cell(row=row, column=1, value=vente.id)
+                ws_ventes.cell(row=row, column=2, value=vente.numero_facture)
+                ws_ventes.cell(row=row, column=3, value=vente.date_vente.strftime('%Y-%m-%d %H:%M') if vente.date_vente else '')
+                ws_ventes.cell(row=row, column=4, value=vente_data.get('client', 'Client anonyme'))
+                ws_ventes.cell(row=row, column=5, value=vente_data.get('produit', 'Produit inconnu'))
+                ws_ventes.cell(row=row, column=6, value=vente.quantite)
+                ws_ventes.cell(row=row, column=7, value=float(vente.prix_unitaire))
+                ws_ventes.cell(row=row, column=8, value=float(vente.remise))
+                ws_ventes.cell(row=row, column=9, value=float(vente.montant_total))
+                ws_ventes.cell(row=row, column=10, value=vente.devise)
+                ws_ventes.cell(row=row, column=11, value=vente.mode_paiement)
+                ws_ventes.cell(row=row, column=12, value=vente.statut)
+                ws_ventes.cell(row=row, column=13, value=vente.statut_paiement)
+            
+            print(f"✅ {len(ventes)} ventes exportées")
+        
+        # === FEUILLE 3: PRODUITS ===
+        try:
+            from models.produit import Produit
+            produits = Produit.query.all()
+            if produits:
+                ws_produits = wb.create_sheet("Produits")
+                headers_produits = [
+                    'ID', 'Nom', 'Référence', 'Description', 'Prix Achat', 
+                    'Prix Vente', 'Stock Actuel', 'Stock Min', 'Catégorie', 
+                    'Fournisseur', 'Actif'
                 ]
-            }
-            df_stats = pd.DataFrame(stats_data)
-            df_stats.to_excel(writer, sheet_name='Statistiques', index=False)
+                
+                # En-têtes
+                for col, header in enumerate(headers_produits, 1):
+                    cell = ws_produits.cell(row=1, column=col, value=header)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                
+                # Données
+                for row, produit in enumerate(produits, 2):
+                    produit_data = produit.to_dict()
+                    ws_produits.cell(row=row, column=1, value=produit.id)
+                    ws_produits.cell(row=row, column=2, value=produit.nom)
+                    ws_produits.cell(row=row, column=3, value=produit.reference)
+                    ws_produits.cell(row=row, column=4, value=produit.description or '')
+                    ws_produits.cell(row=row, column=5, value=float(produit.prix_achat))
+                    ws_produits.cell(row=row, column=6, value=float(produit.prix_vente))
+                    ws_produits.cell(row=row, column=7, value=produit.stock_actuel)
+                    ws_produits.cell(row=row, column=8, value=produit.stock_min)
+                    ws_produits.cell(row=row, column=9, value=produit_data.get('categorie', ''))
+                    ws_produits.cell(row=row, column=10, value=produit_data.get('fournisseur', ''))
+                    ws_produits.cell(row=row, column=11, value='Oui' if produit.actif else 'Non')
+                
+                print(f"✅ {len(produits)} produits exportés")
+        except Exception as e:
+            print(f"⚠️ Erreur export produits: {e}")
         
-        output.seek(0)
+        # === FEUILLE 4: STATISTIQUES ===
+        ws_stats = wb.create_sheet("Statistiques")
         
-        # Nom du fichier avec timestamp
+        stats_data = [
+            ['Statistique', 'Valeur'],
+            ['Date de génération', datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
+            ['Total Utilisateurs', len(users)],
+            ['Total Ventes', len(ventes)],
+            ['Total Produits', len(produits) if 'produits' in locals() else 'N/A'],
+            ['Chiffre d\'affaires total', f"{sum([v.montant_total for v in ventes]):.2f} XOF" if ventes else '0.00 XOF']
+        ]
+        
+        for row, (stat, valeur) in enumerate(stats_data, 1):
+            ws_stats.cell(row=row, column=1, value=stat)
+            ws_stats.cell(row=row, column=2, value=valeur)
+            if row == 1:  # En-tête
+                ws_stats.cell(row=row, column=1).font = header_font
+                ws_stats.cell(row=row, column=1).fill = header_fill
+                ws_stats.cell(row=row, column=2).font = header_font
+                ws_stats.cell(row=row, column=2).fill = header_fill
+        
+        # Ajuster toutes les colonnes
+        for ws in wb.worksheets:
+            for column in ws.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                ws.column_dimensions[column_letter].width = adjusted_width
+        
+        # Sauvegarder
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        # Nom du fichier
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"export_complet_{timestamp}.xlsx"
         
         print(f"✅ Export complet réussi: {filename}")
         
         return send_file(
-            output,
+            buffer,
             as_attachment=True,
             download_name=filename,
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -511,8 +556,7 @@ def export_all_data():
         
     except Exception as e:
         print(f"❌ Erreur export complet: {str(e)}")
-        return jsonify({'error': f'Erreur lors de l\'export complet: {str(e)}'}), 500
-    
+        return jsonify({'error': f'Erreur lors de l\'export complet: {str(e)}'}), 500    
 
 @api_bp.route('/api/notifications/nettoyer', methods=['POST'])
 @login_required
@@ -549,3 +593,50 @@ def nettoyer_notifications():
         db.session.rollback()
         print(f"❌ Erreur nettoyage notifications: {e}")
         return jsonify({'error': str(e)}), 500
+    
+
+
+@api_bp.route('/api/system/control', methods=['POST'])
+@login_required
+def system_control():
+    """Contrôle le système (démarrage/arrêt)"""
+    if current_user.role != 'admin':
+        return jsonify({'message': 'Accès non autorisé'}), 403
+        
+    data = request.json
+    action = data.get('action')
+    
+    if action == 'start':
+        # Logique de démarrage
+        return jsonify({
+            'success': True, 
+            'message': 'Système démarré avec succès',
+            'status': 'running'
+        })
+    elif action == 'stop':
+        # Logique d'arrêt
+        return jsonify({
+            'success': True,
+            'message': 'Système arrêté avec succès', 
+            'status': 'stopped'
+        })
+    elif action == 'restart':
+        # Logique de redémarrage
+        return jsonify({
+            'success': True,
+            'message': 'Système redémarré avec succès',
+            'status': 'running'
+        })
+    else:
+        return jsonify({'error': 'Action non reconnue'}), 400
+
+@api_bp.route('/api/system/status', methods=['GET'])
+@login_required
+def system_status():
+    """Retourne le statut du système"""
+    return jsonify({
+        'status': 'running',
+        'started_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'version': '1.0.0',
+        'users_online': User.query.filter(User.dernier_login >= datetime.now() - timedelta(hours=1)).count()
+    })

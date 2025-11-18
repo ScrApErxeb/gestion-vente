@@ -22,34 +22,31 @@ class Vente(db.Model):
     notes = db.Column(db.Text)
     
     # Pas de relations définies ici - elles seront gérées dans __init__.py
-    
+    __table_args__ = (
+        db.Index('idx_vente_numero', 'numero_facture'),
+        db.Index('idx_vente_client', 'client_id'),
+        db.Index('idx_vente_date', 'date_vente'),
+        db.Index('idx_vente_statut', 'statut'),
+        db.Index('idx_vente_paiement', 'statut_paiement'),
+    )
+
+
     def to_dict(self):
-        """Version sécurisée sans dépendance aux relations"""
-        from .produit import Produit
-        from .client import Client
-        
-        # Charger manuellement les relations si nécessaire
-        produit = Produit.query.get(self.produit_id) if self.produit_id else None
-        client = Client.query.get(self.client_id) if self.client_id else None
-        
         return {
             'id': self.id,
             'numero_facture': self.numero_facture,
-            'produit': produit.nom if produit else 'Produit inconnu',
-            'produit_id': self.produit_id,
-            'client': f"{client.nom} {client.prenom}" if client else "Client anonyme",
-            'client_id': self.client_id,
-            'quantite': self.quantite,
-            'prix_unitaire': self.prix_unitaire,
-            'remise': self.remise,
-            'montant_total': self.montant_total,
-            'devise': self.devise,
-            'mode_paiement': self.mode_paiement,
-            'date_vente': self.date_vente.strftime('%Y-%m-%d %H:%M') if self.date_vente else None,
+            'client': self.client_rel.to_dict() if self.client_rel else None,
+            'utilisateur': self.user_rel.to_dict() if self.user_rel else None,
+            'date_vente': self.date_vente.isoformat() if self.date_vente else None,
             'statut': self.statut,
-            'statut_paiement': self.statut_paiement
-        }
+            'statut_paiement': self.statut_paiement,
+            'montant_total': self.montant_total,
+            'nb_items': len(self.items_rel),
+            'items': [item.to_dict() for item in self.items_rel]
+        }    
+    
 
+    
 class VenteItem(db.Model):
     __tablename__ = 'vente_items'
     id = db.Column(db.Integer, primary_key=True)
@@ -57,18 +54,28 @@ class VenteItem(db.Model):
     produit_id = db.Column(db.Integer, db.ForeignKey('produits.id'), nullable=False)
     quantite = db.Column(db.Integer, nullable=False)
     prix_unitaire = db.Column(db.Float, nullable=False)
+    remise = db.Column(db.Float, default=0.0)
+    tva = db.Column(db.Float, default=0.0)
     montant_total = db.Column(db.Float, nullable=False)
     
+    # SUPPRIMER cette ligne si elle existe :
+    # __table_args__ = (db.Index('idx_vente_item_reference', 'reference'),)
+    
+    # À la place, ajouter des index sur les colonnes existantes :
+    __table_args__ = (
+        db.Index('idx_vente_item_vente', 'vente_id'),
+        db.Index('idx_vente_item_produit', 'produit_id'),
+        db.Index('idx_vente_item_quantite', 'quantite'),
+    )
+
     def to_dict(self):
-        from .produit import Produit
-        produit = Produit.query.get(self.produit_id) if self.produit_id else None
-        
         return {
             'id': self.id,
             'vente_id': self.vente_id,
-            'produit': produit.nom if produit else 'Produit inconnu',
             'produit_id': self.produit_id,
             'quantite': self.quantite,
             'prix_unitaire': self.prix_unitaire,
+            'remise': self.remise,
+            'tva': self.tva,
             'montant_total': self.montant_total
         }

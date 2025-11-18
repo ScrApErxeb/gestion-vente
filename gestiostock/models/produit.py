@@ -45,19 +45,13 @@ class Produit(db.Model):
             'id': self.id,
             'nom': self.nom,
             'reference': self.reference,
-            'code_barre': self.code_barre,
-            'description': self.description,
-            'prix_achat': self.prix_achat,
-            'prix_vente': self.prix_vente,
-            'tva': self.tva,
-            'stock_actuel': self.stock_actuel,
-            'stock_min': self.stock_min,
-            'stock_max': self.stock_max,
-            'categorie': self.categorie.nom if self.categorie else None,
-            'fournisseur': self.fournisseur.nom if self.fournisseur else None,
+            # ... autres champs ...
+            'categorie': self.categorie_rel.nom if self.categorie_rel else None,
+            'fournisseur': self.fournisseur_rel.nom if self.fournisseur_rel else None,
             'stock_faible': self.stock_faible,
-            'marge_benefice': round(self.marge_benefice, 2),
+            'marge_benefice': self.marge_benefice,
             'valeur_stock': self.valeur_stock,
-            'unite_mesure': self.unite_mesure,
-            'actif': self.actif
-        }
+            'date_creation': self.date_creation.isoformat() if self.date_creation else None,
+            'actif': self.actif,
+            
+            }

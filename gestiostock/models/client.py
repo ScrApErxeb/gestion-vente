@@ -28,12 +28,22 @@ class Client(db.Model):
     
     @property
     def total_achats(self):
-        return sum(v.montant_total for v in self.ventes if v.statut == 'confirmée')
+        try:
+            return sum(v.montant_total for v in self.ventes if v.statut == 'confirmée')
+        except (TypeError, AttributeError):
+            return 0.0
     
     @property
     def nombre_achats(self):
         return len([v for v in self.ventes if v.statut == 'confirmée'])
     
+
+    __table_args__ = (
+        db.Index('idx_client_nom', 'nom'),
+        db.Index('idx_client_email', 'email'),
+        db.Index('idx_client_entreprise', 'entreprise'),
+        db.Index('idx_client_actif', 'actif'),
+    )
     def to_dict(self):
         return {
             'id': self.id,

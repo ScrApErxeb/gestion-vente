@@ -36,22 +36,25 @@ class Produit(db.Model):
     def marge_benefice(self):
         return ((self.prix_vente - self.prix_achat) / self.prix_achat * 100) if self.prix_achat > 0 else 0
     
-    @property
-    def valeur_stock(self):
-        return self.stock_actuel * self.prix_achat
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'nom': self.nom,
-            'reference': self.reference,
-            # ... autres champs ...
-            'categorie': self.categorie_rel.nom if self.categorie_rel else None,
-            'fournisseur': self.fournisseur_rel.nom if self.fournisseur_rel else None,
-            'stock_faible': self.stock_faible,
-            'marge_benefice': self.marge_benefice,
-            'valeur_stock': self.valeur_stock,
-            'date_creation': self.date_creation.isoformat() if self.date_creation else None,
-            'actif': self.actif,
-            
-            }
+def to_dict(self):
+    return {
+        'id': self.id,
+        'nom': self.nom,
+        'reference': self.reference,
+        'code_barre': self.code_barre,
+        'description': self.description,
+        'prix_achat': self.prix_achat,
+        'prix_vente': self.prix_vente,
+        'tva': self.tva,
+        'stock_actuel': self.stock_actuel,
+        'stock_min': self.stock_min,
+        'stock_max': self.stock_max,
+        'categorie': self.categorie_associee.nom if self.categorie_associee else None,
+        'fournisseur': self.fournisseur_associe.nom if self.fournisseur_associe else None,
+        'stock_faible': self.stock_faible,
+        'marge_benefice': round(self.marge_benefice, 2),
+        'valeur_stock': self.valeur_stock,
+        'unite_mesure': self.unite_mesure,
+        'emplacement': self.emplacement,
+        'actif': self.actif
+    }

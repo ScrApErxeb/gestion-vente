@@ -31,20 +31,24 @@ class Vente(db.Model):
     )
 
 
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'numero_facture': self.numero_facture,
-            'client': self.client_rel.to_dict() if self.client_rel else None,
-            'utilisateur': self.user_rel.to_dict() if self.user_rel else None,
-            'date_vente': self.date_vente.isoformat() if self.date_vente else None,
-            'statut': self.statut,
-            'statut_paiement': self.statut_paiement,
-            'montant_total': self.montant_total,
-            'nb_items': len(self.items_rel),
-            'items': [item.to_dict() for item in self.items_rel]
-        }    
-    
+def to_dict(self):
+    return {
+        'id': self.id,
+        'numero_facture': self.numero_facture,
+        'client': self.client_acheteur.to_dict() if self.client_acheteur else None,
+        'utilisateur': self.createur_vente.to_dict() if self.createur_vente else None,
+        'produit': self.produit_vendu.to_dict() if self.produit_vendu else None,
+        'date_vente': self.date_vente.isoformat() if self.date_vente else None,
+        'statut': self.statut,
+        'statut_paiement': self.statut_paiement,
+        'montant_total': self.montant_total,
+        'quantite': self.quantite,
+        'prix_unitaire': self.prix_unitaire,
+        'remise': self.remise,
+        'devise': self.devise,
+        'mode_paiement': self.mode_paiement,
+        'nb_items': len(self.items_vente) if hasattr(self, 'items_vente') else 0
+    }
 
     
 class VenteItem(db.Model):

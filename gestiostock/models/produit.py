@@ -35,26 +35,27 @@ class Produit(db.Model):
     @property
     def marge_benefice(self):
         return ((self.prix_vente - self.prix_achat) / self.prix_achat * 100) if self.prix_achat > 0 else 0
-    
-def to_dict(self):
-    return {
-        'id': self.id,
-        'nom': self.nom,
-        'reference': self.reference,
-        'code_barre': self.code_barre,
-        'description': self.description,
-        'prix_achat': self.prix_achat,
-        'prix_vente': self.prix_vente,
-        'tva': self.tva,
-        'stock_actuel': self.stock_actuel,
-        'stock_min': self.stock_min,
-        'stock_max': self.stock_max,
-        'categorie': self.categorie_associee.nom if self.categorie_associee else None,
-        'fournisseur': self.fournisseur_associe.nom if self.fournisseur_associe else None,
-        'stock_faible': self.stock_faible,
-        'marge_benefice': round(self.marge_benefice, 2),
-        'valeur_stock': self.valeur_stock,
-        'unite_mesure': self.unite_mesure,
-        'emplacement': self.emplacement,
-        'actif': self.actif
-    }
+        
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'reference': self.reference,
+            'code_barre': self.code_barre,
+            'nom': self.nom,
+            'description': self.description,
+            'prix_achat': float(self.prix_achat),
+            'prix_vente': float(self.prix_vente),
+            'tva': float(self.tva) if self.tva else 0,
+            'stock_actuel': self.stock_actuel,
+            'stock_min': self.stock_min,
+            'stock_max': self.stock_max,
+            'unite_mesure': self.unite_mesure,
+            'emplacement': self.emplacement,
+            'categorie_id': self.categorie_id,
+            'fournisseur_id': self.fournisseur_id,
+            'actif': self.actif,
+            'date_creation': self.date_creation.isoformat() if self.date_creation else None,
+            'fournisseur': self.fournisseur if self.fournisseur else None,
+            'valeur_stock': float(self.prix_achat * self.stock_actuel),
+            'stock_faible': self.stock_actuel <= self.stock_min
+        }

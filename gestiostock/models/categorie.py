@@ -14,12 +14,11 @@ class Categorie(db.Model):
     produits = db.relationship('Produit', backref='categorie', lazy=True)
     sous_categories = db.relationship('Categorie', backref=db.backref('parent', remote_side=[id]))
     
-def to_dict(self):
-    return {
-        'id': self.id,
-        'nom': self.nom,
-        'description': self.description,
-        'nb_produits': len(self.produits_associes),
-        'actif': self.actif,
-        'parent': self.categorie_parente.nom if self.categorie_parente else None
-    }
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'nom': self.nom,
+            'description': self.description,
+            'parent_id': self.parent_id,
+            'actif': self.actif,
+        }

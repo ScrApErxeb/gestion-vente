@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, render_template
 from flask_login import login_required, current_user
 from sqlalchemy import or_
-from models import Produit, Categorie, MouvementStock, db
+from models import Produit, Categorie, MouvementStock, db, Fournisseur  # ✅ Bon import
 from datetime import datetime
 
 produits_bp = Blueprint('produits', __name__)
@@ -11,190 +11,273 @@ produits_bp = Blueprint('produits', __name__)
 def produits_page():
     return render_template('produits.html')
 
+# === PRODUITS ===
+
 @produits_bp.route('/api/produits', methods=['GET'])
 @login_required
 def get_produits():
-    search = request.args.get('search', '')
-    categorie_id = request.args.get('categorie_id')
-    stock_faible = request.args.get('stock_faible')
+    try:
+        search = request.args.get('search', '')
+        categorie_id = request.args.get('categorie_id')
+        stock_faible = request.args.get('stock_faible')
+        
+        # ✅ CORRECTION: Utiliser Produit.query, pas Fournisseur.query
+        query = Produit.query.filter_by(actif=True)
+        
+        if search:
+            query = query.filter(or_(
+                Produit.nom.ilike(f'%{search}%'),
+                Produit.reference.ilike(f'%{search}%'),
+                Produit.code_barre.ilike(f'%{search}%')
+            ))
+        
+        if categorie_id:
+            query = query.filter_by(categorie_id=categorie_id)
+        
+        if stock_faible == 'true':
+            query = query.filter(Produit.stock_actuel <= Produit.stock_min)
+        
+        produits = query.all()
+        
+        # ✅ FORMATAGE MANUEL SANS to_dict()
+        produits_data = []
+        for p in produits:
+            produit_data = {
+                'id': p.id,
+                'reference': p.reference,
+                'code_barre': p.code_barre or '',
+                'nom': p.nom,
+                'description': p.description or '',
+                'prix_achat': float(p.prix_achat),
+                'prix_vente': float(p.prix_vente),
+                'tva': float(p.tva) if p.tva else 0.0,
+                'stock_actuel': p.stock_actuel,
+                'stock_min': p.stock_min,
+                'stock_max': p.stock_max,
+                'unite_mesure': p.unite_mesure or 'unité',
+                'emplacement': p.emplacement or '',
+                'categorie_id': p.categorie_id,
+                'fournisseur_id': p.fournisseur_id,
+                'actif': p.actif,
+                'valeur_stock': float(p.prix_achat * p.stock_actuel),
+                'stock_faible': p.stock_actuel <= p.stock_min
+            }
+            
+            # Ajouter les noms des relations
+            if p.categorie:
+                produit_data['categorie'] = p.categorie.nom
+            else:
+                produit_data['categorie'] = None
+                
+            if p.fournisseur:
+                produit_data['fournisseur'] = p.fournisseur.nom
+            else:
+                produit_data['fournisseur'] = None
+                
+            produits_data.append(produit_data)
+        
+        print(f"✅ {len(produits_data)} produits chargés")
+        return jsonify(produits_data)
     
-    query = Produit.query.filter_by(actif=True)
-    
-    if search:
-        query = query.filter(or_(
-            Produit.nom.ilike(f'%{search}%'),
-            Produit.reference.ilike(f'%{search}%'),
-            Produit.code_barre.ilike(f'%{search}%')
-        ))
-    
-    if categorie_id:
-        query = query.filter_by(categorie_id=categorie_id)
-    
-    if stock_faible == 'true':
-        query = query.filter(Produit.stock_actuel <= Produit.stock_min)
-    
-    produits = query.all()
-    return jsonify([p.to_dict() for p in produits])
+    except Exception as e:
+        print(f"❌ Erreur get_produits: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
-@produits_bp.route('/api/produits', methods=['POST'])
-@login_required
-def create_produit():
-    data = request.json
-    
-    # Vérifier si la référence existe
-    if Produit.query.filter_by(reference=data['reference']).first():
-        return jsonify({'error': 'Référence déjà utilisée'}), 400
-    
-    produit = Produit(
-        nom=data['nom'],
-        reference=data['reference'],
-        code_barre=data.get('code_barre'),
-        description=data.get('description'),
-        prix_achat=data['prix_achat'],
-        prix_vente=data['prix_vente'],
-        tva=data.get('tva', 0),
-        stock_actuel=data.get('stock_actuel', 0),
-        stock_min=data.get('stock_min', 0),
-        stock_max=data.get('stock_max', 1000),
-        categorie_id=data.get('categorie_id'),
-        fournisseur_id=data.get('fournisseur_id'),
-        unite_mesure=data.get('unite_mesure', 'unité'),
-        emplacement=data.get('emplacement')
-    )
-    
-    db.session.add(produit)
-    db.session.commit()
-    
-    # Créer mouvement initial
-    if produit.stock_actuel > 0:
-        mouvement = MouvementStock(
-            produit_id=produit.id,
-            type_mouvement='entrée',
-            quantite=produit.stock_actuel,
-            quantite_avant=0,
-            quantite_apres=produit.stock_actuel,
-            motif='Stock initial',
-            utilisateur=current_user.username
-        )
-        db.session.add(mouvement)
-        db.session.commit()
-    
-    return jsonify(produit.to_dict()), 201
-
-@produits_bp.route('/api/produits/<int:id>', methods=['PUT'])
-@login_required
-def update_produit(id):
-    produit = Produit.query.get_or_404(id)
-    data = request.json
-    
-    stock_avant = produit.stock_actuel
-    
-    for key, value in data.items():
-        if hasattr(produit, key) and key != 'id':
-            setattr(produit, key, value)
-    
-    # Si le stock a changé, créer un mouvement
-    if 'stock_actuel' in data and data['stock_actuel'] != stock_avant:
-        mouvement = MouvementStock(
-            produit_id=produit.id,
-            type_mouvement='ajustement',
-            quantite=abs(data['stock_actuel'] - stock_avant),
-            quantite_avant=stock_avant,
-            quantite_apres=data['stock_actuel'],
-            motif='Ajustement manuel',
-            utilisateur=current_user.username
-        )
-        db.session.add(mouvement)
-    
-    db.session.commit()
-    return jsonify(produit.to_dict())
-
-@produits_bp.route('/api/produits/<int:id>', methods=['DELETE'])
-@login_required
-def delete_produit(id):
-    produit = Produit.query.get_or_404(id)
-    produit.actif = False
-    db.session.commit()
-    return jsonify({'message': 'Produit désactivé'}), 200
-
-
-
-# === ROUTES CATÉGORIES ===
+# === CATÉGORIES ===
 
 @produits_bp.route('/api/categories', methods=['GET'])
 @login_required
 def get_categories():
-    """Récupère toutes les catégories"""
     try:
         categories = Categorie.query.filter_by(actif=True).all()
-        return jsonify([c.to_dict() for c in categories])
+        
+        categories_data = []
+        for cat in categories:
+            categories_data.append({
+                'id': cat.id,
+                'nom': cat.nom,
+                'description': cat.description or '',
+                'parent_id': cat.parent_id,
+                'actif': cat.actif
+            })
+        
+        print(f"✅ {len(categories_data)} catégories chargées")
+        return jsonify(categories_data)
     except Exception as e:
-        print(f"❌ Erreur dans get_categories: {e}")
+        print(f"❌ Erreur get_categories: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-@produits_bp.route('/api/categories', methods=['POST'])
+# === FOURNISSEURS ===
+
+@produits_bp.route('/api/fournisseurs', methods=['GET'])
 @login_required
-def create_categorie():
-    """Crée une nouvelle catégorie"""
+def get_fournisseurs():
+    try:
+        fournisseurs = Fournisseur.query.filter_by(actif=True).all()
+        
+        fournisseurs_data = []
+        for f in fournisseurs:
+            fournisseurs_data.append({
+                'id': f.id,
+                'nom': f.nom,
+                'email': f.email or '',
+                'telephone': f.telephone or '',
+                'adresse': f.adresse or ''
+            })
+        
+        print(f"✅ {len(fournisseurs_data)} fournisseurs chargés")
+        return jsonify(fournisseurs_data)
+    except Exception as e:
+        print(f"❌ Erreur get_fournisseurs: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+# === CRÉATION PRODUIT ===
+
+@produits_bp.route('/api/produits', methods=['POST'])
+@login_required
+def create_produit():
     try:
         data = request.json
+        print(f"📦 Données reçues création produit: {data}")
         
-        # Validation
-        if not data.get('nom'):
-            return jsonify({'error': 'Le nom de la catégorie est requis'}), 400
+        # Validation des champs requis
+        required_fields = ['nom', 'reference', 'prix_achat', 'prix_vente']
+        for field in required_fields:
+            if not data.get(field):
+                return jsonify({'error': f'Le champ {field} est requis'}), 400
         
-        # Vérifier si la catégorie existe déjà
-        if Categorie.query.filter_by(nom=data['nom']).first():
-            return jsonify({'error': 'Cette catégorie existe déjà'}), 400
+        # Vérifier si la référence existe
+        existing = Produit.query.filter_by(reference=data['reference']).first()
+        if existing:
+            return jsonify({'error': 'Référence déjà utilisée'}), 400
         
-        categorie = Categorie(
+        # Création du produit
+        produit = Produit(
             nom=data['nom'],
+            reference=data['reference'],
+            code_barre=data.get('code_barre'),
             description=data.get('description'),
-            parent_id=data.get('parent_id')
+            prix_achat=float(data['prix_achat']),
+            prix_vente=float(data['prix_vente']),
+            tva=float(data.get('tva', 0)),
+            stock_actuel=int(data.get('stock_actuel', 0)),
+            stock_min=int(data.get('stock_min', 0)),
+            stock_max=int(data.get('stock_max', 1000)),
+            categorie_id=data.get('categorie_id'),
+            fournisseur_id=data.get('fournisseur_id'),
+            unite_mesure=data.get('unite_mesure', 'unité'),
+            emplacement=data.get('emplacement')
         )
         
-        db.session.add(categorie)
+        db.session.add(produit)
         db.session.commit()
         
-        return jsonify(categorie.to_dict()), 201
+        # Créer mouvement initial
+        if produit.stock_actuel > 0:
+            mouvement = MouvementStock(
+                produit_id=produit.id,
+                type_mouvement='entrée',
+                quantite=produit.stock_actuel,
+                quantite_avant=0,
+                quantite_apres=produit.stock_actuel,
+                motif='Stock initial',
+                utilisateur=current_user.username
+            )
+            db.session.add(mouvement)
+            db.session.commit()
         
+        # Retourner le produit créé
+        produit_data = {
+            'id': produit.id,
+            'reference': produit.reference,
+            'nom': produit.nom,
+            'prix_achat': float(produit.prix_achat),
+            'prix_vente': float(produit.prix_vente),
+            'stock_actuel': produit.stock_actuel,
+            'message': 'Produit créé avec succès'
+        }
+        
+        print(f"✅ Produit créé: {produit.reference}")
+        return jsonify(produit_data), 201
+    
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Erreur dans create_categorie: {e}")
+        print(f"❌ Erreur create_produit: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-@produits_bp.route('/api/categories/<int:id>', methods=['PUT'])
+# === MODIFICATION PRODUIT ===
+
+@produits_bp.route('/api/produits/<int:id>', methods=['PUT'])
 @login_required
-def update_categorie(id):
-    """Met à jour une catégorie"""
+def update_produit(id):
     try:
-        categorie = Categorie.query.get_or_404(id)
+        produit = Produit.query.get_or_404(id)
         data = request.json
+        print(f"📦 Modification produit {id}: {data}")
         
+        stock_avant = produit.stock_actuel
+        
+        # Mise à jour des champs
         for key, value in data.items():
-            if hasattr(categorie, key) and key != 'id':
-                setattr(categorie, key, value)
+            if hasattr(produit, key) and key != 'id':
+                setattr(produit, key, value)
+        
+        # Si le stock a changé, créer un mouvement
+        if 'stock_actuel' in data and data['stock_actuel'] != stock_avant:
+            mouvement = MouvementStock(
+                produit_id=produit.id,
+                type_mouvement='ajustement',
+                quantite=abs(data['stock_actuel'] - stock_avant),
+                quantite_avant=stock_avant,
+                quantite_apres=data['stock_actuel'],
+                motif='Ajustement manuel',
+                utilisateur=current_user.username
+            )
+            db.session.add(mouvement)
         
         db.session.commit()
-        return jsonify(categorie.to_dict())
         
+        # Retourner le produit mis à jour
+        produit_data = {
+            'id': produit.id,
+            'reference': produit.reference,
+            'nom': produit.nom,
+            'prix_achat': float(produit.prix_achat),
+            'prix_vente': float(produit.prix_vente),
+            'stock_actuel': produit.stock_actuel,
+            'message': 'Produit mis à jour avec succès'
+        }
+        
+        print(f"✅ Produit {id} modifié")
+        return jsonify(produit_data)
+    
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Erreur dans update_categorie: {e}")
+        print(f"❌ Erreur update_produit: {e}")
         return jsonify({'error': str(e)}), 500
 
-@produits_bp.route('/api/categories/<int:id>', methods=['DELETE'])
+# === SUPPRESSION PRODUIT ===
+
+@produits_bp.route('/api/produits/<int:id>', methods=['DELETE'])
 @login_required
-def delete_categorie(id):
-    """Désactive une catégorie"""
+def delete_produit(id):
     try:
-        categorie = Categorie.query.get_or_404(id)
-        categorie.actif = False
+        produit = Produit.query.get_or_404(id)
+        produit.actif = False
         db.session.commit()
         
-        return jsonify({'message': 'Catégorie désactivée'}), 200
+        print(f"✅ Produit {id} désactivé")
+        return jsonify({'message': 'Produit désactivé'}), 200
         
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Erreur dans delete_categorie: {e}")
+        print(f"❌ Erreur delete_produit: {e}")
         return jsonify({'error': str(e)}), 500

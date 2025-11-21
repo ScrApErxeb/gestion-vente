@@ -15,6 +15,15 @@
     </div>
 </div>
 
+<!-- Filtres -->
+<div style="background: white; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <div class="form-row">
+        <div class="form-group" style="margin: 0; flex: 1;">
+            <input type="text" id="search-fournisseur" placeholder="🔍 Rechercher un fournisseur...">
+        </div>
+    </div>
+</div>
+
 <!-- Table des fournisseurs -->
 <div style="background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
     <table id="fournisseurs-table">
@@ -39,7 +48,7 @@
             <h2 id="modal-fournisseur-title">Nouveau Fournisseur</h2>
             <span class="modal-close" onclick="toggleModal('modal-fournisseur')">&times;</span>
         </div>
-        <form id="form-fournisseur" onsubmit="saveFournisseur(event)">
+        <form id="form-fournisseur">
             <input type="hidden" id="fournisseur-id">
             
             <div class="form-group">
@@ -111,92 +120,5 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-    let fournisseurs = [];
-    
-    async function loadFournisseurs() {
-        try {
-            const response = await fetch('/api/fournisseurs');
-            fournisseurs = await response.json();
-            afficherFournisseurs(fournisseurs);
-        } catch (error) {
-            console.error('Erreur:', error);
-        }
-    }
-    
-    function afficherFournisseurs(data) {
-        const tbody = document.querySelector('#fournisseurs-table tbody');
-        tbody.innerHTML = data.map(f => `
-            <tr>
-                <td><strong>${f.nom}</strong></td>
-                <td>${f.contact || '-'}</td>
-                <td>
-                    📞 ${f.telephone}<br>
-                    📧 ${f.email || '-'}
-                </td>
-                <td>${f.conditions_paiement || '-'}</td>
-                <td>${f.delai_livraison ? f.delai_livraison + ' jours' : '-'}</td>
-                <td>
-                    <button class="btn btn-secondary btn-sm" onclick="editFournisseur(${f.id})" title="Modifier">✏️</button>
-                    <button class="btn btn-primary btn-sm" onclick="voirCommandes(${f.id})" title="Commandes">📋</button>
-                </td>
-            </tr>
-        `).join('');
-    }
-    
-    async function saveFournisseur(event) {
-        event.preventDefault();
-        const form = event.target;
-        const formData = new FormData(form);
-        const data = Object.fromEntries(formData);
-        
-        if (data.delai_livraison) data.delai_livraison = parseInt(data.delai_livraison);
-        
-        const id = document.getElementById('fournisseur-id').value;
-        const method = id ? 'PUT' : 'POST';
-        const url = id ? `/api/fournisseurs/${id}` : '/api/fournisseurs';
-        
-        try {
-            const response = await fetch(url, {
-                method: method,
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-            
-            if (response.ok) {
-                toggleModal('modal-fournisseur');
-                form.reset();
-                loadFournisseurs();
-                alert('✅ Fournisseur enregistré!');
-            }
-        } catch (error) {
-            alert('❌ Erreur de connexion');
-        }
-    }
-    
-    function editFournisseur(id) {
-        const fournisseur = fournisseurs.find(f => f.id === id);
-        if (!fournisseur) return;
-        
-        document.getElementById('modal-fournisseur-title').textContent = 'Modifier le fournisseur';
-        document.getElementById('fournisseur-id').value = fournisseur.id;
-        document.getElementById('fournisseur-nom').value = fournisseur.nom;
-        document.getElementById('fournisseur-contact').value = fournisseur.contact || '';
-        document.getElementById('fournisseur-telephone').value = fournisseur.telephone;
-        document.getElementById('fournisseur-email').value = fournisseur.email || '';
-        document.getElementById('fournisseur-site').value = fournisseur.site_web || '';
-        document.getElementById('fournisseur-adresse').value = fournisseur.adresse || '';
-        document.getElementById('fournisseur-ville').value = fournisseur.ville || '';
-        document.getElementById('fournisseur-conditions').value = fournisseur.conditions_paiement || '';
-        document.getElementById('fournisseur-delai').value = fournisseur.delai_livraison || '';
-        
-        toggleModal('modal-fournisseur');
-    }
-    
-    function voirCommandes(fournisseurId) {
-        window.location.href = `/commandes?fournisseur_id=${fournisseurId}`;
-    }
-    
-    loadFournisseurs();
-</script>
+<script src="{{ url_for('static', filename='js/fournisseurs.js') }}"></script>
 {% endblock %}

@@ -1,9 +1,6 @@
-from . import db
-
 def configure_relationships():
     """Configure toutes les relations SQLAlchemy avec des noms uniques"""
     
-    # Importer les modèles localement pour éviter les imports circulaires
     from .user import User
     from .vente import Vente, VenteItem
     from .produit import Produit
@@ -15,6 +12,7 @@ def configure_relationships():
     from .paiement import Paiement
     from .notification import Notification
     from .parametre_systeme import ParametreSysteme
+    from . import db
     
     # === RELATIONS UTILISATEUR ===
     User.ventes_crees = db.relationship('Vente', backref='createur_vente', lazy=True, foreign_keys='Vente.user_id')
@@ -28,7 +26,10 @@ def configure_relationships():
     # === RELATIONS PRODUIT ===
     Produit.ventes_associees = db.relationship('Vente', backref='produit_vendu', lazy=True)
     Produit.mouvements_stock = db.relationship('MouvementStock', backref='produit_mouvement', lazy=True)
-    Produit.items_commandes = db.relationship('CommandeItem', backref='produit_commande', lazy=True)
+    
+    # ⭐⭐ CORRECTION : SUPPRIMEZ cette ligne conflictuelle ⭐⭐
+    # Produit.items_commandes = db.relationship('CommandeItem', backref='produit_commande', lazy=True)
+    
     Produit.fournisseur_associe = db.relationship('Fournisseur', backref='produits_fournis', lazy=True)
     
     # === RELATIONS CLIENT ===
@@ -41,15 +42,12 @@ def configure_relationships():
     Vente.items_vente = db.relationship('VenteItem', backref='vente_associee', lazy=True, cascade='all, delete-orphan')
     Vente.paiements_effectues = db.relationship('Paiement', backref='vente_payee', lazy=True, cascade='all, delete-orphan')
     
-    # === RELATIONS VENTE ITEM ===
-    # Les relations sont déjà définies par les backrefs
-    
     # === RELATIONS COMMANDE ===
     Commande.items_commande = db.relationship('CommandeItem', backref='commande_associee', lazy=True, cascade='all, delete-orphan')
     Commande.paiements_fournisseur = db.relationship('Paiement', backref='commande_payee', lazy=True, cascade='all, delete-orphan')
     
-    # === RELATIONS COMMANDE ITEM ===
-    # Les relations sont déjà définies par les backrefs
+    # ⭐⭐ CORRECTION : AJOUTEZ cette relation avec un backref UNIQUE ⭐⭐
+    CommandeItem.produit_lie = db.relationship('Produit', backref='commandes_items_lies', lazy=True)
     
     # === RELATIONS MOUVEMENT STOCK ===
     # Les relations sont déjà définies par les backrefs
@@ -59,8 +57,5 @@ def configure_relationships():
     
     # === RELATIONS NOTIFICATION ===
     # Les relations sont déjà définies par les backrefs
-    
-    # === RELATIONS PARAMÈTRE SYSTÈME ===
-    # Pas de relations
     
     print("✅ Relations SQLAlchemy configurées avec succès (noms uniques)")

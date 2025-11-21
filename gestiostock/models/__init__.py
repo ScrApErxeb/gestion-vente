@@ -14,7 +14,6 @@ from .fournisseur import Fournisseur
 from .commande import Commande, CommandeItem
 from .notification import Notification
 from .parametre_systeme import ParametreSysteme
-
 # Configuration des relations
 from .relations import configure_relationships
 

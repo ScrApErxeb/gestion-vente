@@ -1,0 +1,243 @@
+/* ===== STYLES DE LA PAGE DE CONNEXION ===== */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #1abc9c 0%, #16a085 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.login-container {
+    background: white;
+    padding: 40px;
+    border-radius: 15px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    width: 100%;
+    max-width: 400px;
+    animation: slideUp 0.5s ease-out;
+}
+
+@keyframes slideUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.logo {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.logo h1 {
+    color: #1abc9c;
+    font-size: 32px;
+    margin-bottom: 5px;
+    font-weight: 700;
+}
+
+.logo p {
+    color: #7f8c8d;
+    font-size: 14px;
+    font-weight: 400;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    color: #2c3e50;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #ecf0f1;
+    border-radius: 8px;
+    font-size: 14px;
+    transition: all 0.3s;
+    font-family: inherit;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #1abc9c;
+    box-shadow: 0 0 0 3px rgba(26, 188, 156, 0.1);
+}
+
+.btn-login {
+    width: 100%;
+    padding: 14px;
+    background: #1abc9c;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    font-family: inherit;
+    margin-top: 10px;
+}
+
+.btn-login:hover {
+    background: #16a085;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(26, 188, 156, 0.4);
+}
+
+.btn-login:active {
+    transform: translateY(0);
+}
+
+.error-message {
+    background: #e74c3c;
+    color: white;
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: none;
+    font-size: 14px;
+    text-align: center;
+    animation: shake 0.5s ease-in-out;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+
+.success-message {
+    background: #27ae60;
+    color: white;
+    padding: 12px 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    display: none;
+    font-size: 14px;
+    text-align: center;
+}
+
+.footer {
+    text-align: center;
+    margin-top: 30px;
+    color: #7f8c8d;
+    font-size: 13px;
+    border-top: 1px solid #ecf0f1;
+    padding-top: 20px;
+}
+
+/* Styles pour l'état de chargement */
+.loading {
+    position: relative;
+    pointer-events: none;
+}
+
+.loading::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #ffffff;
+    border-radius: 50%;
+    border-right-color: transparent;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Mode sombre optionnel */
+@media (prefers-color-scheme: dark) {
+    .login-container {
+        background: #2c3e50;
+        color: #ecf0f1;
+    }
+    
+    .logo h1 {
+        color: #1abc9c;
+    }
+    
+    .logo p {
+        color: #bdc3c7;
+    }
+    
+    .form-group label {
+        color: #ecf0f1;
+    }
+    
+    .form-group input {
+        background: #34495e;
+        border-color: #4a6572;
+        color: #ecf0f1;
+    }
+    
+    .form-group input:focus {
+        border-color: #1abc9c;
+    }
+    
+    .footer {
+        color: #bdc3c7;
+        border-top-color: #4a6572;
+    }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+    .login-container {
+        padding: 30px 25px;
+        margin: 10px;
+    }
+    
+    .logo h1 {
+        font-size: 28px;
+    }
+    
+    body {
+        padding: 10px;
+        align-items: flex-start;
+        padding-top: 50px;
+    }
+}
+
+/* Effet de focus amélioré */
+.form-group input:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+/* Placeholder stylisé */
+.form-group input::placeholder {
+    color: #95a5a6;
+    opacity: 0.7;
+}
+
+/* Transition douce pour tous les éléments interactifs */
+.btn-login, .form-group input {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}

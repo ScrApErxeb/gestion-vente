@@ -13,6 +13,67 @@ from io import BytesIO
 
 api_bp = Blueprint('api', __name__)
 
+
+@api_bp.route('/dashboard')
+@login_required
+def api_dashboard():
+    """Endpoint pour les données du dashboard"""
+    try:
+        # Données simulées - À REMPLACER par vos vraies données
+        stats = {
+            'devise': 'F CFA',
+            'ventes': {
+                'jour': 125000,
+                'mois': 1850000,
+                'annee': 22450000,
+                'mensuelles': [
+                    {'mois': 'Jan', 'montant': 1200000},
+                    {'mois': 'Fév', 'montant': 1500000},
+                    {'mois': 'Mar', 'montant': 1800000},
+                    {'mois': 'Avr', 'montant': 1650000},
+                    {'mois': 'Mai', 'montant': 1900000},
+                    {'mois': 'Jun', 'montant': 2100000},
+                    {'mois': 'Jul', 'montant': 1950000},
+                    {'mois': 'Aoû', 'montant': 1850000},
+                    {'mois': 'Sep', 'montant': 2000000},
+                    {'mois': 'Oct', 'montant': 2200000},
+                    {'mois': 'Nov', 'montant': 2350000},
+                    {'mois': 'Déc', 'montant': 1850000}
+                ]
+            },
+            'stats_globales': {
+                'categories': 8,
+                'fournisseurs': 12
+            },
+            'produits': {
+                'total': 156,
+                'stock_faible': 7,
+                'top_ventes': [
+                    {'nom': 'Smartphone X10', 'quantite': 45, 'ca': 2250000},
+                    {'nom': 'Ecouteurs Pro', 'quantite': 38, 'ca': 950000},
+                    {'nom': 'Chargeur Rapide', 'quantite': 32, 'ca': 320000},
+                    {'nom': 'Tablette Mini', 'quantite': 28, 'ca': 1960000},
+                    {'nom': 'Powerbank 20000mAh', 'quantite': 25, 'ca': 625000},
+                    {'nom': 'Câble USB-C', 'quantite': 22, 'ca': 110000},
+                    {'nom': 'Haut-parleur Bluetooth', 'quantite': 18, 'ca': 720000}
+                ]
+            },
+            'clients': {
+                'total': 124,
+                'nouveaux': 8
+            },
+            'commandes': {
+                'en_cours': 5,
+                'montant_en_cours': 750000
+            }
+        }
+        
+        return jsonify(stats)
+        
+    except Exception as e:
+        print(f"Erreur API dashboard: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @api_bp.route('/api/notifications', methods=['GET'])
 @login_required
 def get_notifications():
@@ -640,3 +701,5 @@ def system_status():
         'version': '1.0.0',
         'users_online': User.query.filter(User.dernier_login >= datetime.now() - timedelta(hours=1)).count()
     })
+
+

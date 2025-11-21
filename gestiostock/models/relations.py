@@ -36,7 +36,7 @@ def configure_relationships():
     Client.ventes_effectuees = db.relationship('Vente', backref='client_acheteur', lazy=True)
     
     # === RELATIONS FOURNISSEUR ===
-    Fournisseur.commandes_passees = db.relationship('Commande', backref='fournisseur_commande', lazy=True)
+    Fournisseur.commandes_passees = db.relationship('Commande', backref='fournisseur_commande', lazy=True,overlaps="commandes,fournisseur")
     
     # === RELATIONS VENTE ===
     Vente.items_vente = db.relationship('VenteItem', backref='vente_associee', lazy=True, cascade='all, delete-orphan')

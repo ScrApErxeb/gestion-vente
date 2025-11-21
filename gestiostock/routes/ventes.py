@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, render_template
 from flask_login import login_required, current_user
 from sqlalchemy import or_
-from models import Vente, Produit, Client, MouvementStock, db
+from models import Vente, Produit, Client, MouvementStock, db, VenteItem
 from datetime import datetime
 import random
 
@@ -88,92 +88,38 @@ def get_ventes():
         return jsonify({'error': str(e)}), 500
 
 
-@ventes_bp.route('/api/ventes', methods=['POST'])
-@login_required
+# Exemple Flask / SQLAlchemy
+@ventes_bp.route('/ventes', methods=['POST'])
 def create_vente():
-    try:
-        data = request.json
-        print(f"🛒 Données création vente: {data}")
-        
-        # Validation
-        required_fields = ['produit_id', 'quantite', 'prix_unitaire']
-        for field in required_fields:
-            if not data.get(field):
-                return jsonify({'error': f'Le champ {field} est requis'}), 400
-        
-        # Vérifier le produit
-        produit = Produit.query.get(data['produit_id'])
-        if not produit:
-            return jsonify({'error': 'Produit non trouvé'}), 404
-            
-        # Vérifier le stock
-        quantite = int(data['quantite'])
-        if produit.stock_actuel < quantite:
-            return jsonify({'error': f'Stock insuffisant. Disponible: {produit.stock_actuel}, Demandé: {quantite}'}), 400
-        
-        # Générer numéro de facture
-        numero_facture = f"FACT-{datetime.now().strftime('%Y%m%d')}-{random.randint(1000, 9999)}"
-        
-        # Calculer le montant total
-        sous_total = float(data['prix_unitaire']) * quantite
-        remise_montant = sous_total * (float(data.get('remise', 0)) / 100)
-        montant_total = sous_total - remise_montant
-        
-        # Créer la vente
-        vente = Vente(
-            numero_facture=numero_facture,
-            produit_id=data['produit_id'],
-            client_id=data.get('client_id'),
-            quantite=quantite,
-            prix_unitaire=float(data['prix_unitaire']),
-            remise=float(data.get('remise', 0)),
-            montant_total=montant_total,
-            mode_paiement=data.get('mode_paiement', 'espèces'),
-            devise=data.get('devise', 'XOF'),
-            statut='confirmée',
-            statut_paiement='payé',
-            notes=data.get('notes'),
-            date_vente=datetime.now()
-        )
-        
-        # Mettre à jour le stock
-        stock_avant = produit.stock_actuel
-        produit.stock_actuel -= quantite
-        
-        # Créer mouvement de stock
-        mouvement = MouvementStock(
-            produit_id=produit.id,
-            type_mouvement='sortie',
-            quantite=quantite,
-            quantite_avant=stock_avant,
-            quantite_apres=produit.stock_actuel,
-            motif=f'Vente {numero_facture}',
-            utilisateur=current_user.username
-        )
-        
-        db.session.add(vente)
-        db.session.add(mouvement)
-        db.session.commit()
-        
-        # Retourner la vente créée
-        vente_data = {
-            'id': vente.id,
-            'numero_facture': vente.numero_facture,
-            'produit': produit.nom,
-            'quantite': quantite,
-            'montant_total': montant_total,
-            'message': 'Vente créée avec succès'
-        }
-        
-        print(f"✅ Vente créée: {numero_facture}")
-        return jsonify(vente_data), 201
-        
-    except Exception as e:
-        db.session.rollback()
-        print(f"❌ Erreur create_vente: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+    data = request.get_json()
+    client_id = data.get('client_id')
+    devise = data.get('devise', 'XOF')
+    mode_paiement = data.get('mode_paiement', 'espèces')
+    notes = data.get('notes', '')
+    items = data.get('items', [])
+
+    if not items:
+        return jsonify({'error': 'Aucun produit dans la vente'}), 400
+
+    vente = Vente(client_id=client_id, devise=devise,
+                  mode_paiement=mode_paiement, notes=notes,
+                  statut='confirmée', statut_paiement='payé')
+
+    for item in items:
+        produit_id = item['produit_id']
+        quantite = item['quantite']
+        prix_unitaire = item['prix_unitaire']
+        remise = item.get('remise', 0)
+        venteItem = VenteItem(produit_id=produit_id,
+                              quantite=quantite,
+                              prix_unitaire=prix_unitaire,
+                              remise=remise)
+        vente.items_vente.append(venteItem)
+
+    db.session.add(vente)
+    db.session.commit()
+    return jsonify({'message':'Vente enregistrée','vente_id':vente.id}), 201
+
 
 @ventes_bp.route('/api/ventes/<int:id>/annuler', methods=['PUT'])
 @login_required
@@ -184,23 +130,24 @@ def annuler_vente(id):
         if vente.statut == 'annulée':
             return jsonify({'error': 'Vente déjà annulée'}), 400
         
-        # Restaurer le stock
-        produit = vente.produit
-        if produit:
-            stock_avant = produit.stock_actuel
-            produit.stock_actuel += vente.quantite
-            
-            # Créer mouvement de stock d'annulation
-            mouvement = MouvementStock(
-                produit_id=produit.id,
-                type_mouvement='entrée',
-                quantite=vente.quantite,
-                quantite_avant=stock_avant,
-                quantite_apres=produit.stock_actuel,
-                motif=f'Annulation vente {vente.numero_facture}',
-                utilisateur=current_user.username
-            )
-            db.session.add(mouvement)
+        # Restaurer le stock pour chaque produit de la vente
+        for item in vente.items_vente:
+            produit = item.produit_lie
+            if produit:
+                stock_avant = produit.stock_actuel
+                produit.stock_actuel += item.quantite
+                
+                # Créer mouvement de stock d'annulation
+                mouvement = MouvementStock(
+                    produit_id=produit.id,
+                    type_mouvement='entrée',
+                    quantite=item.quantite,
+                    quantite_avant=stock_avant,
+                    quantite_apres=produit.stock_actuel,
+                    motif=f'Annulation vente {vente.numero_facture}',
+                    utilisateur=current_user.username
+                )
+                db.session.add(mouvement)
         
         vente.statut = 'annulée'
         db.session.commit()
@@ -211,6 +158,8 @@ def annuler_vente(id):
         db.session.rollback()
         print(f"❌ Erreur annuler_vente: {e}")
         return jsonify({'error': str(e)}), 500
+
+
 
 @ventes_bp.route('/api/clients', methods=['GET'])
 @login_required

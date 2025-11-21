@@ -82,8 +82,7 @@
         <tbody></tbody>
     </table>
 </div>
-
-<!-- Modal Nouvelle Vente -->
+<!-- Modal Nouvelle Vente avec Panier -->
 <div id="modal-vente" class="modal">
     <div class="modal-content">
         <div class="modal-header">
@@ -91,35 +90,48 @@
             <span class="modal-close" onclick="toggleModal('modal-vente')">&times;</span>
         </div>
         <form id="form-vente">
+            <!-- Client -->
             <div class="form-group">
                 <label>Client</label>
                 <select name="client_id" id="vente-client">
                     <option value="">Client anonyme</option>
                 </select>
             </div>
-            
-            <div class="form-group">
-                <label>Produit *</label>
-                <select name="produit_id" id="vente-produit" required>
-                    <option value="">Sélectionner un produit</option>
-                </select>
-            </div>
-            
+
+            <!-- Sélection produit et quantité -->
             <div class="form-row">
+                <div class="form-group">
+                    <label>Produit *</label>
+                    <select name="produit_id" id="vente-produit" required>
+                        <option value="">Sélectionner un produit</option>
+                    </select>
+                </div>
                 <div class="form-group">
                     <label>Quantité *</label>
                     <input type="number" name="quantite" id="vente-quantite" required min="1">
+                    <div id="stock-indicator" style="color:#e74c3c; font-size:12px; display:none;">
+                        ⚠️ Stock insuffisant !
+                    </div>
                 </div>
                 <div class="form-group">
                     <label>Prix unitaire</label>
                     <input type="number" name="prix_unitaire" id="vente-prix" step="0.01" readonly>
                 </div>
-            </div>
-            
-            <div class="form-row">
                 <div class="form-group">
                     <label>Remise (%)</label>
                     <input type="number" name="remise" id="vente-remise" step="0.01" value="0" min="0" max="100">
+                </div>
+            </div>
+
+            <div class="form-row" style="align-items:center; gap:10px; margin-bottom:10px;">
+                <div class="form-group">
+                    <label>Devise</label>
+                    <select name="devise" id="vente-devise">
+                        <option value="XOF">F CFA (XOF)</option>
+                        <option value="EUR">Euro (EUR)</option>
+                        <option value="USD">Dollar (USD)</option>
+                        <option value="GBP">Livre Sterling (GBP)</option>
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Mode de paiement</label>
@@ -130,30 +142,49 @@
                         <option value="virement">Virement</option>
                     </select>
                 </div>
+                <div class="form-group" style="margin-top:24px;">
+                    <button type="button" class="btn btn-secondary" onclick="ventesManager.ajouterAuPanier()">
+                        ➕ Ajouter au panier
+                    </button>
+                </div>
             </div>
-            
-            <div class="form-group">
-                <label>Devise</label>
-                <select name="devise" id="vente-devise">
-                    <option value="XOF">F CFA (XOF)</option>
-                    <option value="EUR">Euro (EUR)</option>
-                    <option value="USD">Dollar (USD)</option>
-                    <option value="GBP">Livre Sterling (GBP)</option>
-                </select>
+
+            <!-- Panier -->
+            <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                <h4>🛒 Panier</h4>
+                <table id="panier-table" style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th>Produit</th>
+                            <th>Qté</th>
+                            <th>Prix unitaire</th>
+                            <th>Remise</th>
+                            <th>Total</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="6" style="text-align:center; color:#7f8c8d;">Le panier est vide</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
-            
-            <div class="form-group">
-                <label>Notes</label>
-                <textarea name="notes" id="vente-notes" rows="2"></textarea>
-            </div>
-            
-            <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; margin: 20px 0;">
+
+            <!-- Total général -->
+            <div style="background: #e8f8f5; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span style="font-size: 18px; font-weight: 600; color: #2c3e50;">TOTAL À PAYER:</span>
                     <span style="font-size: 24px; font-weight: bold; color: #1abc9c;" id="vente-total">0 F CFA</span>
                 </div>
             </div>
-            
+
+            <!-- Notes et boutons -->
+            <div class="form-group">
+                <label>Notes</label>
+                <textarea name="notes" id="vente-notes" rows="2"></textarea>
+            </div>
+
             <div style="display: flex; gap: 10px;">
                 <button type="submit" class="btn btn-primary">💰 Enregistrer la vente</button>
                 <button type="button" class="btn btn-secondary" onclick="toggleModal('modal-vente')">❌ Annuler</button>
@@ -161,6 +192,7 @@
         </form>
     </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}

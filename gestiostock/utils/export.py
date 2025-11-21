@@ -5,7 +5,7 @@ import io
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 
@@ -59,92 +59,81 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 def exporter_facture_pdf(vente):
-    """Exporte une facture PDF pour une vente (simple ou multi-produits)"""
+    """
+    Exporte une facture PDF pour une vente multi-produits
+    vente.items: liste d'objets VenteItem avec .produit.nom, .quantite, .prix_unitaire, .remise
+    vente.devise, vente.numero_facture, vente.date_vente, vente.client, vente.mode_paiement, vente.notes
+    """
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=30,
-        leftMargin=30,
-        topMargin=30,
-        bottomMargin=18
-    )
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
     elements = []
 
     # Styles
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='CenterTitle', alignment=1, fontSize=18, spaceAfter=12))
+    styles.add(ParagraphStyle(name='Right', alignment=2))
 
     # Titre
     elements.append(Paragraph(f"Facture N° {vente.numero_facture}", styles['CenterTitle']))
 
-    # Infos client et paiement
-    client_nom = vente.client_acheteur.nom if vente.client_acheteur else "Client anonyme"
-    client_info = f"""
-    <b>Client:</b> {client_nom}<br/>
-    <b>Date:</b> {vente.date_vente.strftime('%d/%m/%Y %H:%M')}<br/>
-    <b>Mode paiement:</b> {vente.mode_paiement}<br/>
-    <b>Devise:</b> {vente.devise}
+    # Infos client et vente
+    client_nom = getattr(vente, 'client', 'Client anonyme')
+    info_text = f"""
+    <b>Client :</b> {client_nom}<br/>
+    <b>Date :</b> {vente.date_vente.strftime('%d/%m/%Y %H:%M')}<br/>
+    <b>Mode de paiement :</b> {vente.mode_paiement}<br/>
+    <b>Devise :</b> {vente.devise}
     """
-    elements.append(Paragraph(client_info, styles['Normal']))
+    elements.append(Paragraph(info_text, styles['Normal']))
     elements.append(Spacer(1, 12))
 
     # Tableau produits
     data = [['Produit', 'Quantité', 'Prix Unitaire', 'Remise (%)', 'Montant']]
-    montant_total = 0
+    total = 0
 
-    # Vente multi-produits
-    if hasattr(vente, 'items_vente') and vente.items_vente:
-        for item in vente.items_vente:
-            produit_nom = item.produit.nom if item.produit else "Produit inconnu"
-            montant = (item.prix_unitaire * item.quantite) * (1 - (item.remise or 0) / 100)
-            montant_total += montant
-            data.append([
-                produit_nom,
-                str(item.quantite),
-                f"{item.prix_unitaire:,.2f} F",
-                f"{(item.remise or 0):.2f}%",
-                f"{montant:,.2f} F"
-            ])
-    else:
-        # Vente simple
-        produit_nom = vente.produit_vendu.nom if vente.produit_vendu else "Produit inconnu"
-        montant_total = vente.montant_total
+    for item in getattr(vente, 'items', []):
+        produit_nom = item.produit.nom if item.produit else "Produit inconnu"
+        quantite = item.quantite
+        prix_unitaire = item.prix_unitaire
+        remise = getattr(item, 'remise', 0) or 0
+
+        montant_item = prix_unitaire * quantite * (1 - remise / 100)
+        total += montant_item
+
         data.append([
             produit_nom,
-            str(vente.quantite),
-            f"{vente.prix_unitaire:,.2f} F",
-            f"{vente.remise:.2f}%",
-            f"{montant_total:,.2f} F"
+            str(quantite),
+            f"{prix_unitaire:,.2f} {vente.devise}",
+            f"{remise:.2f}%",
+            f"{montant_item:,.2f} {vente.devise}"
         ])
 
     # Création du tableau
     table = Table(data, colWidths=[200, 60, 80, 60, 80])
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.darkblue),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-        ('GRID', (0, 0), (-1, -1), 1, colors.black),
-        ('BACKGROUND', (0, 1), (-1, -1), colors.beige)
+        ('BACKGROUND', (0,0), (-1,0), colors.darkblue),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (1,1), (-1,-1), 'CENTER'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 12),
+        ('BOTTOMPADDING', (0,0), (-1,0), 12),
+        ('GRID', (0,0), (-1,-1), 1, colors.black),
+        ('BACKGROUND', (0,1), (-1,-1), colors.beige)
     ]))
     elements.append(table)
     elements.append(Spacer(1, 12))
 
     # Total
-    elements.append(Paragraph(f"<b>Total à payer: {montant_total:,.2f} {vente.devise}</b>", styles['Heading2']))
+    elements.append(Paragraph(f"<b>Total à payer : {total:,.2f} {vente.devise}</b>", styles['Heading2']))
 
-    # Notes éventuelles
+    # Notes
     if getattr(vente, 'notes', None):
         elements.append(Spacer(1, 12))
-        elements.append(Paragraph(f"<b>Notes:</b> {vente.notes}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Notes :</b> {vente.notes}", styles['Normal']))
 
     doc.build(elements)
     buffer.seek(0)
     return buffer
-
 
 
 def exporter_produits_excel(produits, filename=None):

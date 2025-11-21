@@ -724,3 +724,5 @@ def export_facture_pdf_route(vente_id):
         download_name=filename,
         mimetype='application/pdf'
     )
+
+

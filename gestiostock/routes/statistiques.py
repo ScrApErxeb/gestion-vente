@@ -3,7 +3,7 @@ from flask_login import login_required, current_user
 from sqlalchemy import func
 from models import db, User, Fournisseur  # Ajouter cette ligne
 from datetime import datetime, timedelta
-from models import Vente, Produit, Client, Categorie, CommandeItem, Commande
+from models import Vente, Produit, Client, Categorie, VenteItem, Commande
 import json
 
 statistiques_bp = Blueprint('statistiques', __name__)
@@ -63,15 +63,23 @@ def dashboard_data():
     ).filter_by(actif=True).scalar() or 0
     
     # Top produits vendus (mois en cours)
-    top_produits = db.session.query(
+    top_produits = (
+    db.session.query(
         Produit.nom,
-        func.sum(Vente.quantite).label('total_vendu'),
-        func.sum(Vente.montant_total).label('ca')
-    ).join(Vente).filter(
+        func.sum(VenteItem.quantite).label('total_vendu'),
+        func.sum(VenteItem.montant_total).label('ca')
+    )
+    .join(VenteItem, Produit.id == VenteItem.produit_id)
+    .join(Vente, Vente.id == VenteItem.vente_id)
+    .filter(
         Vente.date_vente >= start_of_month,
         Vente.statut == 'confirmée'
-    ).group_by(Produit.id).order_by(func.sum(Vente.quantite).desc()).limit(5).all()
-    
+    )
+    .group_by(Produit.id)
+    .order_by(func.sum(VenteItem.quantite).desc())
+    .limit(5)
+    .all()
+)
     # Ventes par mois (12 derniers mois)
     ventes_mensuelles = []
     for i in range(11, -1, -1):

@@ -702,4 +702,25 @@ def system_status():
         'users_online': User.query.filter(User.dernier_login >= datetime.now() - timedelta(hours=1)).count()
     })
 
+from flask import send_file, jsonify
+from flask_login import login_required
+from models import Vente
+from utils.export import exporter_facture_pdf
 
+@api_bp.route('/export/facture/<int:vente_id>', methods=['GET'])
+@login_required
+def export_facture_pdf_route(vente_id):
+    """Export PDF d'une facture unique"""
+    vente = Vente.query.get(vente_id)
+    if not vente:
+        return jsonify({'error': 'Facture non trouvée'}), 404
+
+    pdf_buffer = exporter_facture_pdf(vente)
+    filename = f"facture_{vente.numero_facture}.pdf"
+
+    return send_file(
+        pdf_buffer,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/pdf'
+    )

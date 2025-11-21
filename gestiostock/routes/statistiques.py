@@ -200,13 +200,16 @@ def stats_ventes_complete():
         # Ventes par catégorie - CORRIGÉ
         ventes_par_categorie = db.session.query(
             Categorie.nom.label('categorie'),
-            func.sum(Vente.montant_total).label('total')
+            func.sum(VenteItem.prix_unitaire * VenteItem.quantite * (1 - (VenteItem.remise/100))).label('total')
         ).join(Produit, Produit.categorie_id == Categorie.id)\
-         .join(Vente, Vente.produit_id == Produit.id)\
-         .filter(
-             Vente.statut == 'confirmée',
-             Vente.date_vente >= debut
-         ).group_by(Categorie.nom).all()
+        .join(VenteItem, VenteItem.produit_id == Produit.id)\
+        .join(Vente, Vente.id == VenteItem.vente_id)\
+        .filter(
+            Vente.statut == 'confirmée',
+            Vente.date_vente >= debut
+        ).group_by(Categorie.nom).all()
+
+
 
         # Ventes par mode de paiement - CORRIGÉ
         ventes_par_paiement = db.session.query(
@@ -233,25 +236,25 @@ def stats_ventes_complete():
 @statistiques_bp.route('/api/rapport/rentabilite')
 @login_required
 def rapport_rentabilite():
-    """Analyse de rentabilité globale corrigée"""
+    """Analyse de rentabilité globale pour ventes multi-produits"""
     try:
-        # Récupérer toutes les ventes confirmées
         ventes = Vente.query.filter_by(statut='confirmée').all()
         
         ca_total = 0
         cout_total = 0
         produits_data = {}
-        
+
         for vente in ventes:
-            # CORRECTION : Utiliser directement les données de la vente
-            ca_total += vente.montant_total
-            
-            # Calcul du coût : quantité * prix d'achat du produit
-            produit = Produit.query.get(vente.produit_id)
-            if produit:
-                cout_vente = vente.quantite * produit.prix_achat
-                cout_total += cout_vente
+            for item in vente.items:  # Boucler sur tous les items de la vente
+                produit = item.produit  # Relation vers Produit
+                if not produit:
+                    continue
                 
+                montant_item = item.prix_unitaire * item.quantite * (1 - (item.remise or 0)/100)
+                ca_total += montant_item
+                cout_vente = item.quantite * produit.prix_achat
+                cout_total += cout_vente
+
                 # Collecte par produit pour le top rentable
                 if produit.id not in produits_data:
                     produits_data[produit.id] = {
@@ -260,16 +263,13 @@ def rapport_rentabilite():
                         'ca': 0,
                         'cout': 0
                     }
-                
-                produits_data[produit.id]['quantite'] += vente.quantite
-                produits_data[produit.id]['ca'] += vente.montant_total
+                produits_data[produit.id]['quantite'] += item.quantite
+                produits_data[produit.id]['ca'] += montant_item
                 produits_data[produit.id]['cout'] += cout_vente
         
-        # Calculs finaux
         benefice_brut = ca_total - cout_total
-        marge_brute_pct = (benefice_brut / ca_total * 100) if ca_total > 0 else 0
-        
-        # Top produits rentables
+        marge_brute_pct = (benefice_brut / ca_total * 100) if ca_total else 0
+
         top_rentables = sorted(
             [
                 {
@@ -278,23 +278,23 @@ def rapport_rentabilite():
                     'ca': p['ca'],
                     'cout': p['cout'],
                     'benefice': p['ca'] - p['cout'],
-                    'marge': ((p['ca'] - p['cout']) / p['ca'] * 100) if p['ca'] > 0 else 0
-                } for p in produits_data.values() if p['quantite'] > 0  # Filtrer les produits vendus
+                    'marge': ((p['ca'] - p['cout']) / p['ca'] * 100) if p['ca'] else 0
+                } for p in produits_data.values() if p['quantite'] > 0
             ],
             key=lambda x: x['benefice'],
             reverse=True
-        )[:5]  # Limiter aux 5 premiers
-        
+        )[:5]
+
         return jsonify({
-        'resume': {
-            'ca_total': round(ca_total, 2),
-            'cout_total': round(cout_total, 2),
-            'benefice_brut': round(benefice_brut, 2),
-            'marge_brute': round(marge_brute_pct, 2)
-        },
-        'top_rentables': top_rentables
-    })
-        
+            'resume': {
+                'ca_total': round(ca_total, 2),
+                'cout_total': round(cout_total, 2),
+                'benefice_brut': round(benefice_brut, 2),
+                'marge_brute': round(marge_brute_pct, 2)
+            },
+            'top_rentables': top_rentables
+        })
+    
     except Exception as e:
         print(f"Erreur dans rapport rentabilité: {e}")
         return jsonify({
@@ -306,7 +306,7 @@ def rapport_rentabilite():
             },
             'top_rentables': []
         }), 500
-    
+ 
 @statistiques_bp.route('/api/stats/clients')
 @login_required
 def stats_clients():
@@ -373,6 +373,60 @@ def stats_clients():
 @statistiques_bp.route('/api/stats/produits')
 @login_required
 def stats_produits():
+    """
+    Statistiques par produit :
+    - Quantité vendue
+    - Chiffre d'affaires généré
+    - Bénéfice par produit
+    """
+    try:
+        ventes = Vente.query.filter_by(statut='confirmée').all()
+        produits_data = {}
+
+        for vente in ventes:
+            for item in vente.items:  # Parcourir chaque produit dans la vente
+                produit = item.produit
+                if not produit:
+                    continue  # Ignorer si le produit est supprimé ou nul
+
+                montant_item = item.prix_unitaire * item.quantite * (1 - (item.remise or 0)/100)
+                cout_item = item.quantite * produit.prix_achat
+
+                if produit.id not in produits_data:
+                    produits_data[produit.id] = {
+                        'nom': produit.nom,
+                        'quantite_vendue': 0,
+                        'ca': 0,
+                        'cout': 0
+                    }
+
+                produits_data[produit.id]['quantite_vendue'] += item.quantite
+                produits_data[produit.id]['ca'] += montant_item
+                produits_data[produit.id]['cout'] += cout_item
+
+        # Préparer la liste finale avec bénéfice et marge
+        result = []
+        for p in produits_data.values():
+            benefice = p['ca'] - p['cout']
+            marge = (benefice / p['ca'] * 100) if p['ca'] else 0
+            result.append({
+                'nom': p['nom'],
+                'quantite_vendue': p['quantite_vendue'],
+                'ca': round(p['ca'], 2),
+                'cout': round(p['cout'], 2),
+                'benefice': round(benefice, 2),
+                'marge': round(marge, 2)
+            })
+
+        # Tri par chiffre d'affaires décroissant
+        result.sort(key=lambda x: x['ca'], reverse=True)
+
+        return jsonify(result)
+
+    except Exception as e:
+        print(f"Erreur stats produits: {e}")
+        return jsonify({'error': str(e)}), 500
+
     """Statistiques des produits - TOP 10 produits vendus"""
     try:
         # Top produits vendus - Version corrigée

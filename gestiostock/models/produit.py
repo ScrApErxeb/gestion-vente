@@ -1,5 +1,6 @@
 from datetime import datetime
 from . import db
+from sqlalchemy import CheckConstraint
 
 class Produit(db.Model):
     __tablename__ = 'produits'
@@ -23,11 +24,12 @@ class Produit(db.Model):
     date_creation = db.Column(db.DateTime, default=datetime.utcnow)
     actif = db.Column(db.Boolean, default=True)
     
-    # Relations seront définies après
-    # ventes = db.relationship('Vente', backref='produit', lazy=True)
-    # mouvements = db.relationship('MouvementStock', backref='produit', lazy=True)
-    # commande_items = db.relationship('CommandeItem', backref='produit', lazy=True)
-    
+    __table_args__ = (
+        CheckConstraint('stock_actuel >= 0', name='check_stock_actuel_positive'),
+        CheckConstraint('stock_min >= 0', name='check_stock_min_positive'),
+        CheckConstraint('stock_max >= 0', name='check_stock_max_positive'),
+    )
+
     @property
     def stock_faible(self):
         return self.stock_actuel <= self.stock_min

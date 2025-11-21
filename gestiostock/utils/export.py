@@ -60,9 +60,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 def exporter_facture_pdf(vente):
     """
-    Exporte une facture PDF pour une vente multi-produits
+    Exporte une facture PDF pour une vente multi-produits.
     vente.items: liste d'objets VenteItem avec .produit.nom, .quantite, .prix_unitaire, .remise
-    vente.devise, vente.numero_facture, vente.date_vente, vente.client, vente.mode_paiement, vente.notes
+    vente.client: objet client obligatoire avec .nom
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=18)
@@ -76,8 +76,8 @@ def exporter_facture_pdf(vente):
     # Titre
     elements.append(Paragraph(f"Facture N° {vente.numero_facture}", styles['CenterTitle']))
 
-    # Infos client et vente
-    client_nom = getattr(vente, 'client', 'Client anonyme')
+    # Infos client et vente (client obligatoire)
+    client_nom = vente.client.nom
     info_text = f"""
     <b>Client :</b> {client_nom}<br/>
     <b>Date :</b> {vente.date_vente.strftime('%d/%m/%Y %H:%M')}<br/>
@@ -92,10 +92,10 @@ def exporter_facture_pdf(vente):
     total = 0
 
     for item in getattr(vente, 'items', []):
-        produit_nom = item.produit.nom if item.produit else "Produit inconnu"
-        quantite = item.quantite
-        prix_unitaire = item.prix_unitaire
-        remise = getattr(item, 'remise', 0) or 0
+        produit_nom = getattr(getattr(item, 'produit', None), 'nom', 'Produit inconnu')
+        quantite = max(getattr(item, 'quantite', 0), 0)
+        prix_unitaire = max(getattr(item, 'prix_unitaire', 0), 0)
+        remise = max(getattr(item, 'remise', 0) or 0, 0)
 
         montant_item = prix_unitaire * quantite * (1 - remise / 100)
         total += montant_item
@@ -126,7 +126,7 @@ def exporter_facture_pdf(vente):
     # Total
     elements.append(Paragraph(f"<b>Total à payer : {total:,.2f} {vente.devise}</b>", styles['Heading2']))
 
-    # Notes
+    # Notes éventuelles
     if getattr(vente, 'notes', None):
         elements.append(Spacer(1, 12))
         elements.append(Paragraph(f"<b>Notes :</b> {vente.notes}", styles['Normal']))

@@ -130,16 +130,27 @@ class VentesManager {
 
     calculerStats(ventes) {
         const aujourdhui = new Date().toISOString().split('T')[0];
-        const ventesJour = ventes.filter(v => v.date_vente.startsWith(aujourdhui) && v.statut==='confirmée');
+        const ventesJour = ventes.filter(v => v.date_vente.startsWith(aujourdhui) && v.statut === 'confirmée');
 
-        const caJour = ventesJour.reduce((sum,v)=>sum+v.montant_total,0);
+        const caJour = ventesJour.reduce((sum, v) => {
+            // total de tous les items
+            const totalVente = v.items.reduce((s, item) => s + (item.prix_unitaire * item.quantite * (1 - (item.remise || 0)/100)), 0);
+            return sum + totalVente;
+        }, 0);
+
         const nbVentes = ventesJour.length;
-        const articlesVendus = ventesJour.reduce((sum,v)=>sum+v.quantite,0);
+
+        // total articles vendus
+        const articlesVendus = ventesJour.reduce((sum, v) => {
+            const totalArticles = v.items.reduce((s, item) => s + item.quantite, 0);
+            return sum + totalArticles;
+        }, 0);
 
         document.getElementById('ca-jour').textContent = this.formatCurrency(caJour);
         document.getElementById('nb-ventes-jour').textContent = nbVentes;
         document.getElementById('articles-vendus').textContent = articlesVendus;
     }
+
 
     async loadClients() {
         try {

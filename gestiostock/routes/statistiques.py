@@ -220,15 +220,32 @@ def stats_ventes_complete():
             Vente.date_vente >= debut
         ).group_by(Vente.mode_paiement).all()
 
+        # Top 10 produits vendus (quantité & chiffre d'affaires)
+        top_produits = db.session.query(
+            Produit.nom.label('produit'),
+            func.sum(VenteItem.quantite).label('quantite_totale'),
+            func.sum(VenteItem.quantite * VenteItem.prix_unitaire * (1 - (VenteItem.remise/100))).label('ca_total')
+        ).join(VenteItem, Produit.id == VenteItem.produit_id)\
+        .join(Vente, Vente.id == VenteItem.vente_id)\
+        .filter(
+            Vente.statut == 'confirmée',
+            Vente.date_vente >= debut
+        ).group_by(Produit.id)\
+        .order_by(func.sum(VenteItem.quantite).desc())\
+        .limit(10).all()
+
+
         return jsonify({
             "ca_total": ca_total,
             "nb_ventes": nb_ventes,
             "panier_moyen": panier_moyen,
             "evolution": evolution,
+            
             "ventes_par_categorie": [{"categorie": c.categorie, "total": c.total} for c in ventes_par_categorie],
             "ventes_par_paiement": [{"mode": p[0], "total": p[1]} for p in ventes_par_paiement]
         })
 
+        
     except Exception as e:
         print(f"Erreur stats ventes: {e}")
         return jsonify({"error": str(e)}), 500
@@ -377,56 +394,49 @@ def stats_produits():
     Statistiques par produit :
     - Quantité vendue
     - Chiffre d'affaires généré
-    - Bénéfice par produit
     """
     try:
-        ventes = Vente.query.filter_by(statut='confirmée').all()
-        produits_data = {}
+        # Début du mois pour filtrer par mois courant (optionnel, à adapter)
+        today = datetime.now()
+        start_of_month = datetime(today.year, today.month, 1)
 
-        for vente in ventes:
-            for item in vente.items:  # Parcourir chaque produit dans la vente
-                produit = item.produit
-                if not produit:
-                    continue  # Ignorer si le produit est supprimé ou nul
+        # Requête : top 10 produits vendus par quantité
+        top_produits = (
+            db.session.query(
+                Produit.nom,
+                func.sum(VenteItem.quantite).label('quantite'),
+                func.sum(VenteItem.montant_total).label('ca')
+            )
+            .join(VenteItem, Produit.id == VenteItem.produit_id)
+            .join(Vente, Vente.id == VenteItem.vente_id)
+            .filter(
+                Vente.statut == 'confirmée',
+                Vente.date_vente >= start_of_month  # ou supprime si tu veux toutes les ventes
+            )
+            .group_by(Produit.id)
+            .order_by(func.sum(VenteItem.quantite).desc())  # Tri par quantité
+            .limit(10)
+            .all()
+        )
 
-                montant_item = item.prix_unitaire * item.quantite * (1 - (item.remise or 0)/100)
-                cout_item = item.quantite * produit.prix_achat
+        # Préparer la réponse JSON
+        result = [
+            {
+                'nom': p[0],
+                'quantite': int(p[1] or 0),
+                'ca': float(p[2] or 0)
+            }
+            for p in top_produits
+        ]
 
-                if produit.id not in produits_data:
-                    produits_data[produit.id] = {
-                        'nom': produit.nom,
-                        'quantite_vendue': 0,
-                        'ca': 0,
-                        'cout': 0
-                    }
-
-                produits_data[produit.id]['quantite_vendue'] += item.quantite
-                produits_data[produit.id]['ca'] += montant_item
-                produits_data[produit.id]['cout'] += cout_item
-
-        # Préparer la liste finale avec bénéfice et marge
-        result = []
-        for p in produits_data.values():
-            benefice = p['ca'] - p['cout']
-            marge = (benefice / p['ca'] * 100) if p['ca'] else 0
-            result.append({
-                'nom': p['nom'],
-                'quantite_vendue': p['quantite_vendue'],
-                'ca': round(p['ca'], 2),
-                'cout': round(p['cout'], 2),
-                'benefice': round(benefice, 2),
-                'marge': round(marge, 2)
-            })
-
-        # Tri par chiffre d'affaires décroissant
-        result.sort(key=lambda x: x['ca'], reverse=True)
-
-        return jsonify(result)
+        return jsonify({'top_ventes': result})
 
     except Exception as e:
         print(f"Erreur stats produits: {e}")
         return jsonify({'error': str(e)}), 500
 
+
+def stats_top_produits():
     """Statistiques des produits - TOP 10 produits vendus"""
     try:
         # Top produits vendus - Version corrigée
@@ -436,10 +446,10 @@ def stats_produits():
             func.sum(Vente.quantite).label('quantite'),
             func.sum(Vente.montant_total).label('ca')
         ).join(Vente, Vente.produit_id == Produit.id)\
-         .filter(Vente.statut == 'confirmée')\
-         .group_by(Produit.id)\
-         .order_by(func.sum(Vente.montant_total).desc())\
-         .limit(10).all()
+            .filter(Vente.statut == 'confirmée')\
+            .group_by(Produit.id)\
+            .order_by(func.sum(Vente.montant_total).desc())\
+            .limit(10).all()
 
         top_ventes_list = [
             {

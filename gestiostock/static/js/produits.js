@@ -104,11 +104,15 @@ class ProduitsManager {
                     ${produit.stock_min > 0 ? `<div style="font-size: 11px; color: #7f8c8d;">Min: ${produit.stock_min}</div>` : ''}
                 </td>
                 <td style="text-align: right; font-weight: 600;">
-                    ${this.formatCurrency(produit.valeur_stock || produit.prix_achat * produit.stock_actuel)}
-                </td>
-                <td>
-                    ${this.getStatutBadge(produit)}
-                </td>
+                        ${this.formatCurrency(produit.valeur_stock || produit.prix_achat * produit.stock_actuel)}
+                    </td>
+                    <td>
+                        ${produit.emplacement || '-'}
+                    </td>
+                    <td>
+                        ${this.getStatutBadge(produit)}
+                    </td>
+
                 <td>
                     <div style="display: flex; gap: 5px;">
                         <button class="btn btn-secondary btn-sm" onclick="produitsManager.editProduit(${produit.id})" title="Modifier">

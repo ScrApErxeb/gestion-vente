@@ -31,34 +31,50 @@ def get_commandes():
         
         commandes_data = []
         for c in commandes:
+            # Récupérer le fournisseur
+            fournisseur = Fournisseur.query.get(c.fournisseur_id)
+            
+            # Construire les données de commande
             commande_data = {
                 'id': c.id,
                 'numero_commande': c.numero_commande,
                 'date_commande': c.date_commande.isoformat() if c.date_commande else None,
                 'date_livraison_prevue': c.date_livraison_prevue.isoformat() if c.date_livraison_prevue else None,
+                'date_livraison_reelle': c.date_livraison_reelle.isoformat() if c.date_livraison_reelle else None,
                 'montant_total': float(c.montant_total) if c.montant_total else 0,
                 'mode_paiement': c.mode_paiement,
                 'devise': c.devise,
                 'statut': c.statut,
+                'statut_paiement': c.statut_paiement,
                 'notes': c.notes,
                 'fournisseur_id': c.fournisseur_id,
-                'nb_items': len(c.items_commande)  # ⭐ CORRECT: items_commande (de configure_relationships)
+                'fournisseur': fournisseur.nom if fournisseur else 'Fournisseur inconnu',
+                'nb_items': len(c.items) if hasattr(c, 'items') else 0,
+                'items': []
             }
             
-            # ⭐ CORRECTION: Utilisez fournisseur_commande (de configure_relationships)
-            if c.fournisseur_commande:
-                commande_data['fournisseur'] = c.fournisseur_commande.nom
-            else:
-                commande_data['fournisseur'] = 'Fournisseur inconnu'
-                
+            # Ajouter les items de la commande
+            if hasattr(c, 'items'):
+                for item in c.items:
+                    produit_nom = item.produit.nom if hasattr(item, 'produit') and item.produit else f"Produit ID:{item.produit_id}"
+                    commande_data['items'].append({
+                        'id': item.id,
+                        'produit_id': item.produit_id,
+                        'produit': produit_nom,
+                        'quantite_commandee': item.quantite_commandee,
+                        'quantite_recue': item.quantite_recue,
+                        'prix_unitaire': float(item.prix_unitaire),
+                        'montant_total': float(item.montant_total)
+                    })
+            
             commandes_data.append(commande_data)
         
         return jsonify(commandes_data)
-        
+    
     except Exception as e:
         print(f"❌ Erreur get_commandes: {e}")
         return jsonify({'error': str(e)}), 500
-    
+   
     
 @commandes_bp.route('/api/commandes', methods=['POST'])
 @login_required
@@ -128,19 +144,19 @@ def recevoir_commande(id):
     try:
         # ⭐ CORRECTION : Utiliser les NOUVEAUX noms de relations
         commande = Commande.query.options(
-            db.joinedload(Commande.items_commande).joinedload(CommandeItem.produit_lie)  # ⭐ produit_lie au lieu de produit_commande
+            db.joinedload(Commande.items).joinedload(CommandeItem.produit)  # ⭐ produit_lie au lieu de produit_commande
         ).get_or_404(id)
         
         if commande.statut == 'reçue':
             return jsonify({'error': 'Commande déjà réceptionnée'}), 400
         
-        print(f"📦 Réception commande {commande.numero_commande} avec {len(commande.items_commande)} articles")
+        print(f"📦 Réception commande {commande.numero_commande} avec {len(commande.items)} articles")
         
         # Mettre à jour les stocks pour chaque item
-        for item in commande.items_commande:
+        for item in commande.items:
             # ⭐ CORRECTION : Utiliser produit_lie (le NOUVEAU nom de relation)
-            if hasattr(item, 'produit_lie') and item.produit_lie:
-                produit = item.produit_lie
+            if hasattr(item, 'produit') and item.produit:
+                produit = item.produit
                 stock_avant = produit.stock_actuel
                 quantite_recue = item.quantite_commandee
                 

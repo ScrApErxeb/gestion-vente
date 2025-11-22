@@ -49,76 +49,66 @@ class FournisseursManager {
     }
 
     afficherFournisseurs(fournisseurs) {
-        const tbody = document.querySelector('#fournisseurs-table tbody');
-        
-        if (!fournisseurs || fournisseurs.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" style="text-align: center; padding: 40px; color: #7f8c8d;">
-                        🏭 Aucun fournisseur trouvé
-                    </td>
-                </tr>
-            `;
-            return;
-        }
+    const tbody = document.querySelector('#fournisseurs-table tbody');
 
-        tbody.innerHTML = fournisseurs.map(f => `
+    if (!fournisseurs || fournisseurs.length === 0) {
+        tbody.innerHTML = `
             <tr>
-                <td>
-                    <div style="font-weight: 600; color: #2c3e50;">${f.nom}</div>
-                    ${f.site_web ? `<div style="font-size: 11px; color: #7f8c8d;">🌐 ${f.site_web}</div>` : ''}
-                </td>
-                <td>
-                    ${f.contact ? `<div style="font-weight: 500;">${f.contact}</div>` : ''}
-                    <div style="font-size: 12px; color: #7f8c8d;">👤 Contact</div>
-                </td>
-                <td>
-                    <div style="display: flex; flex-direction: column; gap: 2px;">
-                        ${f.telephone ? `<div style="display: flex; align-items: center; gap: 5px;">📞 ${f.telephone}</div>` : ''}
-                        ${f.email ? `<div style="display: flex; align-items: center; gap: 5px;">📧 ${f.email}</div>` : ''}
-                        ${f.adresse ? `<div style="display: flex; align-items: center; gap: 5px; font-size: 11px; color: #7f8c8d;">📍 ${f.adresse}</div>` : ''}
-                    </div>
-                </td>
-                <td>
-                    ${f.conditions_paiement ? `
-                        <div style="font-weight: 500; color: #27ae60;">${f.conditions_paiement}</div>
-                    ` : '<span style="color: #7f8c8d;">-</span>'}
-                </td>
-                <td>
-                    ${f.delai_livraison ? `
-                        <div style="display: flex; align-items: center; gap: 5px;">
-                            <span style="font-weight: 600; color: #e67e22;">${f.delai_livraison}</span>
-                            <span style="font-size: 12px; color: #7f8c8d;">jours</span>
-                        </div>
-                    ` : '<span style="color: #7f8c8d;">-</span>'}
-                </td>
-                <td>
-                    <div style="display: flex; gap: 5px;">
-                        <button class="btn btn-secondary btn-sm" onclick="fournisseursManager.editFournisseur(${f.id})" title="Modifier">
-                            ✏️
-                        </button>
-                        <button class="btn btn-primary btn-sm" onclick="fournisseursManager.voirCommandes(${f.id})" title="Commandes">
-                            📋
-                        </button>
-                        <button class="btn btn-info btn-sm" onclick="fournisseursManager.voirDetails(${f.id})" title="Détails">
-                            👁️
-                        </button>
-                        ${f.actif ? `
-                        <button class="btn btn-danger btn-sm" onclick="fournisseursManager.desactiverFournisseur(${f.id})" title="Désactiver">
-                            🚫
-                        </button>
-                        ` : `
-                        <button class="btn btn-success btn-sm" onclick="fournisseursManager.activerFournisseur(${f.id})" title="Activer">
-                            ✅
-                        </button>
-                        `}
-                    </div>
+                <td colspan="6" style="text-align: center; padding: 40px; color: #7f8c8d;">
+                    🏭 Aucun fournisseur trouvé
                 </td>
             </tr>
-        `).join('');
-
-        console.log(`✅ ${fournisseurs.length} fournisseurs affichés`);
+        `;
+        return;
     }
+
+    tbody.innerHTML = fournisseurs.map(f => `
+        <tr>
+            <td>
+                <div style="font-weight: 600; color: #2c3e50;">${f.nom}</div>
+                ${f.site_web ? `<div style="font-size: 11px; color: #7f8c8d;">🌐 ${f.site_web}</div>` : ''}
+            </td>
+            <td>
+                ${f.contact ? `<div style="font-weight: 500;">${f.contact}</div>` : ''}
+                <div style="font-size: 12px; color: #7f8c8d;">👤 Contact</div>
+            </td>
+            <td>
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                    ${f.telephone ? `<div style="display: flex; align-items: center; gap: 5px;">📞 ${f.telephone}</div>` : ''}
+                    ${f.email ? `<div style="display: flex; align-items: center; gap: 5px;">📧 ${f.email}</div>` : ''}
+                    ${f.adresse ? `<div style="display: flex; align-items: center; gap: 5px; font-size: 11px; color: #7f8c8d;">📍 ${f.adresse}</div>` : ''}
+                </div>
+            </td>
+            
+            
+            <td>
+                <div style="display: flex; gap: 5px;">
+                    <button class="btn btn-secondary btn-sm" onclick="fournisseursManager.editFournisseur(${f.id})" title="Modifier">
+                        ✏️
+                    </button>
+                    <button class="btn btn-primary btn-sm" onclick="fournisseursManager.voirCommandes(${f.id})" title="Commandes">
+                        📋
+                    </button>
+                    <button class="btn btn-info btn-sm" onclick="fournisseursManager.voirDetails(${f.id})" title="Détails">
+                        👁️
+                    </button>
+                    ${f.actif ? `
+                    <button class="btn btn-danger btn-sm" onclick="fournisseursManager.desactiverFournisseur(${f.id})" title="Désactiver">
+                        🚫
+                    </button>
+                    ` : `
+                    <button class="btn btn-success btn-sm" onclick="fournisseursManager.activerFournisseur(${f.id})" title="Activer">
+                        ✅
+                    </button>
+                    `}
+                </div>
+            </td>
+        </tr>
+    `).join('');
+
+    console.log(`✅ ${fournisseurs.length} fournisseurs affichés`);
+}
+
 
     async saveFournisseur(event) {
         event.preventDefault();

@@ -217,52 +217,26 @@ def create_produit():
 
 @produits_bp.route('/api/produits/<int:id>', methods=['PUT'])
 @login_required
-def update_produit(id):
+def modifier_produit(id):
+    produit = Produit.query.get_or_404(id)  # 404 si non trouvé
     try:
-        produit = Produit.query.get_or_404(id)
-        data = request.json
-        print(f"📦 Modification produit {id}: {data}")
-        
-        stock_avant = produit.stock_actuel
-        
-        # Mise à jour des champs
-        for key, value in data.items():
-            if hasattr(produit, key) and key != 'id':
-                setattr(produit, key, value)
-        
-        # Si le stock a changé, créer un mouvement
-        if 'stock_actuel' in data and data['stock_actuel'] != stock_avant:
-            mouvement = MouvementStock(
-                produit_id=produit.id,
-                type_mouvement='ajustement',
-                quantite=abs(data['stock_actuel'] - stock_avant),
-                quantite_avant=stock_avant,
-                quantite_apres=data['stock_actuel'],
-                motif='Ajustement manuel',
-                utilisateur=current_user.username
-            )
-            db.session.add(mouvement)
-        
+        data = request.get_json()
+
+        # Mettre à jour seulement les champs présents dans la requête
+        for key in ['reference', 'nom', 'description', 'prix_achat', 'prix_vente',
+                    'tva', 'stock_actuel', 'stock_min', 'stock_max',
+                    'categorie_id', 'fournisseur_id', 'unite_mesure', 'emplacement', 'code_barre']:
+            if key in data:
+                setattr(produit, key, data[key])
+
         db.session.commit()
-        
-        # Retourner le produit mis à jour
-        produit_data = {
-            'id': produit.id,
-            'reference': produit.reference,
-            'nom': produit.nom,
-            'prix_achat': float(produit.prix_achat),
-            'prix_vente': float(produit.prix_vente),
-            'stock_actuel': produit.stock_actuel,
-            'message': 'Produit mis à jour avec succès'
-        }
-        
-        print(f"✅ Produit {id} modifié")
-        return jsonify(produit_data)
-    
+        return jsonify({'message': 'Produit modifié avec succès', 'produit_id': produit.id})
+
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Erreur update_produit: {e}")
         return jsonify({'error': str(e)}), 500
+
+
 
 # === SUPPRESSION PRODUIT ===
 

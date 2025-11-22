@@ -412,7 +412,7 @@ async function chargerStatsProduits() {
                 </tr>
             `;
         }
-        
+         
     } catch (error) {
         console.error('❌ Erreur produits:', error);
         document.querySelector('#table-top-produits tbody').innerHTML = `

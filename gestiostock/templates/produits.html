@@ -54,6 +54,7 @@
                 <th>Prix Vente</th>
                 <th>Stock</th>
                 <th>Valeur</th>
+                <th>Rayon</th> <!-- Nouvelle colonne -->
                 <th>Statut</th>
                 <th>Actions</th>
             </tr>
@@ -69,7 +70,7 @@
             <h2 id="modal-produit-title">Nouveau Produit</h2>
             <span class="modal-close" onclick="toggleModal('modal-produit')">&times;</span>
         </div>
-        <form id="form-produit" onsubmit="saveProduit(event)">
+            <form id="form-produit"> <!-- plus de onsubmit -->
             <input type="hidden" id="produit-id" name="id">
             
             <div class="form-row">

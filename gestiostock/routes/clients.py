@@ -63,6 +63,27 @@ def create_client():
 def update_client(id):
     client = Client.query.get_or_404(id)
     data = request.json
+
+    # Champs numériques à sécuriser
+    numeric_fields = ['plafond_credit', 'remise_defaut']
+
+    for key, value in data.items():
+        if key in numeric_fields:
+            if value in (None, '', 'null'):  # gérer les valeurs vides
+                value = 0
+            else:
+                try:
+                    value = float(value)
+                except ValueError:
+                    value = 0  # ou raise une erreur personnalisée
+        if hasattr(client, key) and key != 'id':
+            setattr(client, key, value)
+
+    db.session.commit()
+    return jsonify(client.to_dict())
+
+    client = Client.query.get_or_404(id)
+    data = request.json
     
     for key, value in data.items():
         if hasattr(client, key) and key != 'id':

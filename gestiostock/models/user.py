@@ -19,10 +19,7 @@ class User(UserMixin, db.Model):
     dernier_login = db.Column(db.DateTime)
     preferences = db.Column(db.Text)  # JSON pour préférences (devise, langue, etc.)
     
-    # Relations seront définies après l'import des autres modèles
-    # ventes = db.relationship('Vente', backref='utilisateur', lazy=True, foreign_keys='Vente.user_id')
-    # commandes = db.relationship('Commande', backref='utilisateur', lazy=True)
-    
+       
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
     

@@ -26,7 +26,9 @@ def register_blueprints(app):
         from routes.commandes import commandes_bp
         from routes.statistiques import statistiques_bp
         from routes.api import api_bp
+        from routes.exporter import exporter_bp
 
+        
         app.register_blueprint(auth_bp)
         app.register_blueprint(clients_bp)
         app.register_blueprint(produits_bp)
@@ -34,6 +36,7 @@ def register_blueprints(app):
         app.register_blueprint(fournisseurs_bp)
         app.register_blueprint(commandes_bp)
         app.register_blueprint(statistiques_bp)
+        app.register_blueprint(exporter_bp, url_prefix='/exporter')
         app.register_blueprint(api_bp, url_prefix='/api')
 
         print("✅ Tous les blueprints ont été enregistrés avec succès !")

@@ -274,3 +274,66 @@ def get_clients():
     except Exception as e:
         print(f"❌ Erreur get_clients: {e}")
         return jsonify({'error': str(e)}), 500
+    
+
+from io import BytesIO
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill
+from flask import send_file
+
+@ventes_bp.route('/api/export/ventes/excel', methods=['GET'])
+@login_required
+def export_ventes_excel():
+    date_debut = request.args.get('date_debut')
+    date_fin = request.args.get('date_fin')
+
+    if not date_debut or not date_fin:
+        return jsonify({'error': 'Les paramètres date_debut et date_fin sont requis'}), 400
+
+    try:
+        date_debut_obj = datetime.strptime(date_debut, '%Y-%m-%d')
+        date_fin_obj = datetime.strptime(date_fin, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+    except ValueError:
+        return jsonify({'error': 'Format de date invalide. Utilisez YYYY-MM-DD'}), 400
+
+    # Récupérer les ventes dans la période
+    ventes = Vente.query.filter(
+        Vente.date_vente >= date_debut_obj,
+        Vente.date_vente <= date_fin_obj
+    ).all()
+
+    # Créer Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Ventes"
+
+    header_font = Font(bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+    header_alignment = Alignment(horizontal="center")
+
+    headers = ['ID', 'Numéro Facture', 'Date', 'Client', 'Montant Total', 'Devise', 'Statut']
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_alignment
+
+    for row, vente in enumerate(ventes, 2):
+        ws.cell(row=row, column=1, value=vente.id)
+        ws.cell(row=row, column=2, value=vente.numero_facture)
+        ws.cell(row=row, column=3, value=vente.date_vente.strftime('%Y-%m-%d %H:%M') if vente.date_vente else '')
+        ws.cell(row=row, column=4, value=f"{vente.client.nom} {vente.client.prenom}" if vente.client else 'Client anonyme')
+        ws.cell(row=row, column=5, value=float(vente.montant_total))
+        ws.cell(row=row, column=6, value=vente.devise)
+        ws.cell(row=row, column=7, value=vente.statut)
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    return send_file(
+        buffer,
+        as_attachment=True,
+        download_name=f'ventes_{date_debut}_a_{date_fin}.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )

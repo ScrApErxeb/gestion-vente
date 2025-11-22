@@ -18,10 +18,7 @@ class Commande(db.Model):
     mode_paiement = db.Column(db.String(20))
     notes = db.Column(db.Text)
     
-    # ⚠️ SUPPRIMEZ ces lignes - les relations sont dans configure_relationships()
-    # fournisseur = db.relationship('Fournisseur', backref='commandes', lazy=True)
-    # items = db.relationship('CommandeItem', backref='commande', lazy=True, cascade='all, delete-orphan')
-    
+
     __table_args__ = (
         db.Index('idx_commande_numero', 'numero_commande'),
         db.Index('idx_commande_fournisseur', 'fournisseur_id'),
@@ -84,9 +81,7 @@ class CommandeItem(db.Model):
     prix_unitaire = db.Column(db.Float, nullable=False)
     montant_total = db.Column(db.Float, nullable=False)
     
-    # ⚠️ SUPPRIMEZ cette ligne - la relation est dans configure_relationships()
-    # produit = db.relationship('Produit', backref='commande_items', lazy=True)
-    
+      
     __table_args__ = (
         db.Index('idx_commande_item_commande', 'commande_id'),
         db.Index('idx_commande_item_produit', 'produit_id'),

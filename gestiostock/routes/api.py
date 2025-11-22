@@ -657,54 +657,53 @@ def nettoyer_notifications():
     
 
 
-@api_bp.route('/api/system/control', methods=['POST'])
+# routes/api_system.py
+from models import ParametreSysteme  # importe ton modèle
+
+
+@api_bp.route('/system/control', methods=['POST'])
 @login_required
 def system_control():
-    """Contrôle le système (démarrage/arrêt)"""
+    """Contrôle le système (démarrage/arrêt) avec persistance dans la DB"""
     if current_user.role != 'admin':
         return jsonify({'message': 'Accès non autorisé'}), 403
-        
+
     data = request.json
     action = data.get('action')
-    
+
+    # État courant du système
+    current_status = ParametreSysteme.get_value('system_status', default='stopped')
+
     if action == 'start':
-        # Logique de démarrage
-        return jsonify({
-            'success': True, 
-            'message': 'Système démarré avec succès',
-            'status': 'running'
-        })
+        if current_status == 'running':
+            return jsonify({'success': False, 'message': 'Le système est déjà en cours', 'status': 'running'})
+        ParametreSysteme.set_value('system_status', 'running')
+        return jsonify({'success': True, 'message': 'Système démarré avec succès', 'status': 'running'})
+
     elif action == 'stop':
-        # Logique d'arrêt
-        return jsonify({
-            'success': True,
-            'message': 'Système arrêté avec succès', 
-            'status': 'stopped'
-        })
+        if current_status == 'stopped':
+            return jsonify({'success': False, 'message': 'Le système est déjà arrêté', 'status': 'stopped'})
+        ParametreSysteme.set_value('system_status', 'stopped')
+        return jsonify({'success': True, 'message': 'Système arrêté avec succès', 'status': 'stopped'})
+
     elif action == 'restart':
-        # Logique de redémarrage
-        return jsonify({
-            'success': True,
-            'message': 'Système redémarré avec succès',
-            'status': 'running'
-        })
+        ParametreSysteme.set_value('system_status', 'running')
+        return jsonify({'success': True, 'message': 'Système redémarré avec succès', 'status': 'running'})
+
     else:
         return jsonify({'error': 'Action non reconnue'}), 400
 
-@api_bp.route('/api/system/status', methods=['GET'])
+
+@api_bp.route('/system/status', methods=['GET'])
 @login_required
 def system_status():
-    """Retourne le statut du système"""
-    return jsonify({
-        'status': 'running',
-        'started_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'version': '1.0.0',
-        'users_online': User.query.filter(User.dernier_login >= datetime.now() - timedelta(hours=1)).count()
-    })
+    """Renvoie l'état actuel du système"""
+    if current_user.role != 'admin':
+        return jsonify({'message': 'Accès non autorisé'}), 403
 
-from flask import send_file, jsonify
-from flask_login import login_required
-from models import Vente
+    status = ParametreSysteme.get_value('system_status', default='stopped')
+    return jsonify({'status': status})
+
 from utils.export import exporter_facture_pdf
 
 @api_bp.route('/export/facture/<int:vente_id>', methods=['GET'])

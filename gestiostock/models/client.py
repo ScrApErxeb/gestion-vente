@@ -24,7 +24,6 @@ class Client(db.Model):
     actif = db.Column(db.Boolean, default=True)
     
     # Relations
-    ventes = db.relationship('Vente', backref='client', lazy=True)
     
     @property
     def total_achats(self):

@@ -11,8 +11,6 @@ class Categorie(db.Model):
     actif = db.Column(db.Boolean, default=True)
     
     # Relations
-    produits = db.relationship('Produit', backref='categorie', lazy=True)
-    sous_categories = db.relationship('Categorie', backref=db.backref('parent', remote_side=[id]))
     
     def to_dict(self):
         return {

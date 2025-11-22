@@ -21,10 +21,7 @@ class Fournisseur(db.Model):
     date_creation = db.Column(db.DateTime, default=datetime.utcnow)
     actif = db.Column(db.Boolean, default=True)
     
-    # Relations
-    produits = db.relationship('Produit', backref='fournisseur', lazy=True)
-    commandes = db.relationship('Commande', backref='fournisseur', lazy=True)
-    
+       
     def to_dict(self):
         return {
             'id': self.id,

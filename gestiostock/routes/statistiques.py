@@ -473,3 +473,119 @@ def stats_top_produits():
             "total_produits": 0,
             "error": str(e)
         }), 500
+    
+
+from flask import send_file
+from io import BytesIO
+import openpyxl
+from openpyxl.styles import Font, Alignment, PatternFill
+
+@statistiques_bp.route('/api/export/ventes/excel', methods=['GET'])
+@login_required
+def export_ventes_stats_excel():
+    """Exporte les ventes statistiques en Excel"""
+    try:
+        # Filtre optionnel par période
+        periode = request.args.get('periode', 'mois')
+        now = datetime.now()
+        if periode == 'jour':
+            debut = datetime(now.year, now.month, now.day)
+        elif periode == 'mois':
+            debut = datetime(now.year, now.month, 1)
+        elif periode == 'annee':
+            debut = datetime(now.year, 1, 1)
+        else:
+            debut = datetime(now.year, now.month, 1)
+
+        ventes = Vente.query.filter(
+            Vente.statut == 'confirmée',
+            Vente.date_vente >= debut
+        ).all()
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Ventes Stats"
+
+        headers = ['ID', 'Facture', 'Date', 'Client', 'Montant', 'Mode Paiement', 'Devise']
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center")
+
+        for row, vente in enumerate(ventes, 2):
+            ws.cell(row=row, column=1, value=vente.id)
+            ws.cell(row=row, column=2, value=vente.numero_facture)
+            ws.cell(row=row, column=3, value=vente.date_vente.strftime('%Y-%m-%d %H:%M') if vente.date_vente else '')
+            ws.cell(row=row, column=4, value=f"{vente.client.nom} {vente.client.prenom}" if vente.client else "Client anonyme")
+            ws.cell(row=row, column=5, value=float(vente.montant_total))
+            ws.cell(row=row, column=6, value=vente.mode_paiement)
+            ws.cell(row=row, column=7, value=vente.devise)
+
+        # Sauvegarde dans un buffer
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"ventes_stats_{periode}.xlsx",
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as e:
+        print(f"❌ Erreur export ventes stats: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@statistiques_bp.route('/api/export/top-produits/excel', methods=['GET'])
+@login_required
+def export_top_produits_excel():
+    """Exporte le top 10 produits vendus en Excel"""
+    try:
+        top_produits = (
+            db.session.query(
+                Produit.nom,
+                func.sum(VenteItem.quantite).label('quantite'),
+                func.sum(VenteItem.montant_total).label('ca')
+            )
+            .join(VenteItem, Produit.id == VenteItem.produit_id)
+            .join(Vente, Vente.id == VenteItem.vente_id)
+            .filter(Vente.statut == 'confirmée')
+            .group_by(Produit.id)
+            .order_by(func.sum(VenteItem.quantite).desc())
+            .limit(10)
+            .all()
+        )
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Top Produits"
+
+        headers = ['Produit', 'Quantité Vendue', 'Chiffre Affaires']
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+            cell.alignment = Alignment(horizontal="center")
+
+        for row, p in enumerate(top_produits, 2):
+            ws.cell(row=row, column=1, value=p[0])
+            ws.cell(row=row, column=2, value=int(p[1] or 0))
+            ws.cell(row=row, column=3, value=float(p[2] or 0))
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name="top_produits.xlsx",
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+    except Exception as e:
+        print(f"❌ Erreur export top produits: {e}")
+        return jsonify({'error': str(e)}), 500

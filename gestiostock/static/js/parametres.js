@@ -54,7 +54,7 @@ async function loadCategories() {
     try {
         showLoading('categories-list', true);
         
-        const response = await fetch('/api/categories');
+        const response = await fetch('/categories');
         if (!response.ok) {
             throw new Error('Erreur lors du chargement des catégories');
         }
@@ -125,7 +125,7 @@ async function saveCategorie(event) {
     submitBtn.disabled = true;
     
     try {
-        const response = await fetch('/api/categories', {
+        const response = await fetch('/categories', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
@@ -179,9 +179,9 @@ async function deleteCategorie(id) {
     }
     
     try {
-        const response = await fetch(`/api/categories/${id}`, {
+        const response = await fetch(`/categories/${id}`, {
             method: 'DELETE'
-        });
+        }); 
         
         if (response.ok) {
             loadCategories();

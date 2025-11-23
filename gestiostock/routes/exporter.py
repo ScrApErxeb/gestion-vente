@@ -84,3 +84,75 @@ def export_ventes_excel():
         download_name=filename,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+
+
+
+
+from flask import Blueprint, send_file, make_response
+from io import BytesIO
+from openpyxl import Workbook
+from sqlalchemy.inspection import inspect
+from models import db  # ton objet SQLAlchemy
+
+export_api_bp = Blueprint('export_api', __name__)
+
+@export_api_bp.route('/all-data', methods=['GET'])
+def export_all_data():
+    wb = Workbook()
+    # Supprimer la feuille par défaut
+    wb.remove(wb.active)
+
+    # Parcourir toutes les classes de modèles
+    for cls in db.Model.__subclasses__():
+        table_name = cls.__tablename__
+        ws = wb.create_sheet(title=table_name)
+
+        # Récupérer les colonnes
+        mapper = inspect(cls)
+        columns = [col.key for col in mapper.columns]
+
+        # Écrire l'entête
+        ws.append(columns)
+
+        # Remplir les données
+        for row in cls.query.all():
+            values = [getattr(row, col) for col in columns]
+            ws.append(values)
+
+        # Ajuster largeur colonnes (optionnel)
+        for col_cells in ws.columns:
+            max_len = max((len(str(c.value)) for c in col_cells if c.value), default=0)
+            ws.column_dimensions[col_cells[0].column_letter].width = min(max_len + 2, 50)
+
+    # Générer fichier en mémoire
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    response = make_response(output.read())
+    response.headers["Content-Disposition"] = 'attachment; filename="export_complet.xlsx"'
+    response.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    return response
+
+
+# routes/users.py
+from flask import Blueprint, jsonify
+from flask_login import login_required
+from models import db, User
+
+users_bp = Blueprint('users', __name__, url_prefix='/users')
+
+@users_bp.route('/<int:user_id>/toggle-status', methods=['POST'])
+@login_required
+def toggle_user_status(user_id):
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'Utilisateur introuvable'}), 404
+    
+    # Inverse le statut
+    user.active = not user.active
+    db.session.commit()
+    
+    status = 'activé' if user.active else 'désactivé'
+    return jsonify({'success': True, 'message': f'Utilisateur {status}.'})

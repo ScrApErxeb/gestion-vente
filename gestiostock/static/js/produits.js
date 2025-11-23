@@ -157,7 +157,7 @@ class ProduitsManager {
 
     async loadCategories() {
         try {
-            const response = await fetch('/api/categories');
+            const response = await fetch('/categories');
             this.categories = await response.json();
             
             const selects = ['filter-categorie', 'produit-categorie'];

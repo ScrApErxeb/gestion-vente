@@ -87,7 +87,42 @@ def get_produits():
 
 # === CATÉGORIES ===
 
-@produits_bp.route('/api/categories', methods=['GET'])
+
+
+@produits_bp.route('/categories', methods=['POST'])
+@login_required
+def create_category():
+    try:
+        data = request.get_json()
+
+        if not data or 'nom' not in data:
+            return jsonify({'error': 'Le nom de la catégorie est obligatoire'}), 400
+
+        new_cat = Categorie(
+            nom=data['nom'],
+            description=data.get('description', ''),
+            parent_id=data.get('parent_id'),
+            actif=True
+        )
+
+        db.session.add(new_cat)
+        db.session.commit()
+
+        return jsonify({
+            'id': new_cat.id,
+            'nom': new_cat.nom,
+            'description': new_cat.description,
+            'parent_id': new_cat.parent_id,
+            'actif': new_cat.actif
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Erreur create_category: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@produits_bp.route('/categories', methods=['GET'])
 @login_required
 def get_categories():
     try:
@@ -110,6 +145,72 @@ def get_categories():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+
+# === CATEGORIES - EDITION ===
+
+@produits_bp.route('/categories/<int:cat_id>', methods=['PUT'])
+@login_required
+def update_category(cat_id):
+    try:
+        cat = Categorie.query.get_or_404(cat_id)
+        data = request.get_json()
+
+        # Vérifie si le nouveau nom existe ailleurs
+        if "nom" in data:
+            existing = Categorie.query.filter(
+                Categorie.nom == data["nom"],
+                Categorie.id != cat_id
+            ).first()
+
+            if existing:
+                return jsonify({
+                    "error": "Une autre catégorie possède déjà ce nom."
+                }), 400
+
+            cat.nom = data["nom"]
+
+        cat.description = data.get('description', cat.description)
+        cat.parent_id = data.get('parent_id', cat.parent_id)
+
+        db.session.commit()
+
+        return jsonify({
+            'id': cat.id,
+            'nom': cat.nom,
+            'description': cat.description,
+            'parent_id': cat.parent_id,
+            'actif': cat.actif
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Erreur update_category: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# === CATEGORIES - SUPP ===
+
+@produits_bp.route('/categories/<int:cat_id>', methods=['DELETE'])
+@login_required
+def delete_category(cat_id):
+    try:
+        cat = Categorie.query.get(cat_id)
+        if not cat:
+            return jsonify({'error': 'Catégorie introuvable'}), 404
+
+        # Soft delete
+        cat.actif = False
+
+        db.session.commit()
+
+        return jsonify({'message': 'Catégorie désactivée'})
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Erreur delete_category: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 # === FOURNISSEURS ===
 

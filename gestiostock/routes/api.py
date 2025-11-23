@@ -145,7 +145,7 @@ def export_ventes_pdf():
         mimetype='application/pdf'
     )
 
-@api_bp.route('/api/export/produits/excel')
+@api_bp.route('/export/produits/excel')
 @login_required
 def export_produits_excel():
     """Exporte les produits en Excel"""
@@ -161,7 +161,7 @@ def export_produits_excel():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 
-@api_bp.route('/api/users', methods=['GET'])
+@api_bp.route('/users', methods=['GET'])
 @login_required
 def liste_utilisateurs_api():
     """Retourne la liste des utilisateurs"""
@@ -438,7 +438,7 @@ def preview_ventes_export():
         return jsonify({'error': str(e)}), 500
     
 
-@api_bp.route('/api/export/all-data', methods=['GET'])
+@api_bp.route('/export/all-data', methods=['GET'])
 @login_required
 def export_all_data():
     """Exporte toutes les données de l'application en Excel (sans pandas)"""

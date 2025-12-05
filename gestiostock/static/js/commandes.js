@@ -257,7 +257,7 @@ class CommandesManager {
 
     async loadProduits() {
         try {
-            const response = await fetch('/produits');
+            const response = await fetch('/api/produits');
             if (!response.ok) throw new Error(`Erreur HTTP: ${response.status}`);
             this.produits = await response.json();
             this.updateProduitsSelects();

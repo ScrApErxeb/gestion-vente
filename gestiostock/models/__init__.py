@@ -11,6 +11,7 @@ from .vente import Vente, VenteItem
 from .paiement import Paiement
 from .mouvement_stock import MouvementStock
 from .fournisseur import Fournisseur
+from .depense import Depense
 from .commande import Commande, CommandeItem
 from .notification import Notification
 from .parametre_systeme import ParametreSysteme
@@ -22,7 +23,7 @@ configure_relationships()
 
 __all__ = [
     'db',
-    'User', 'Categorie', 'Produit', 'Client', 'Vente', 'VenteItem',
+    'User', 'Categorie','Depense', 'Produit', 'Client', 'Vente', 'VenteItem',
     'Paiement', 'MouvementStock', 'Fournisseur', 'Commande', 'CommandeItem',
     'Notification', 'ParametreSysteme'
 ]

@@ -4,11 +4,13 @@ GestioStock - Point d'entrée principal de l'application
 """
 
 import os
-from flask import Flask, render_template, jsonify, redirect, url_for, session
+from flask import Flask, render_template, jsonify, redirect, url_for, session, request, flash
 from flask_login import LoginManager, login_required
 from flask_cors import CORS
 from config import Config
 from models import db, User
+
+from models.depense import Depense
 from utils.demo_data import init_demo_data
 
 
@@ -28,7 +30,6 @@ def register_blueprints(app):
         from routes.api import api_bp
         from routes.exporter import exporter_bp
 
-        
         app.register_blueprint(auth_bp)
         app.register_blueprint(clients_bp)
         app.register_blueprint(produits_bp)
@@ -69,7 +70,7 @@ def create_app():
     # Blueprints
     register_blueprints(app)
 
-    # CORS pour autoriser les cookies de session
+    # CORS
     CORS(app,
          supports_credentials=True,
          origins=["http://localhost:5000", "http://127.0.0.1:5000"],
@@ -77,7 +78,9 @@ def create_app():
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     )
 
-    # Routes principales
+    # -------------------------
+    # ROUTES PRINCIPALES
+    # -------------------------
     @app.route('/')
     @login_required
     def index():
@@ -93,12 +96,13 @@ def create_app():
     def parametres_page():
         return render_template('parametres.html')
 
-    # ⭐⭐ ROUTE API DASHBOARD CORRECTEMENT PLACÉE ⭐⭐
+    # -------------------------
+    # API DASHBOARD
+    # -------------------------
     @app.route('/api/dashboard')
     @login_required
     def api_dashboard():
         try:
-            # Données simulées - À REMPLACER par vos vraies données
             stats = {
                 'devise': 'F CFA',
                 'ventes': {
@@ -153,12 +157,42 @@ def create_app():
             print(f"Erreur API dashboard: {e}")
             return jsonify({'error': str(e)}), 500
 
-    # Route de test
-    @app.route('/test')
-    def test():
-        return "✅ Serveur Flask fonctionne !"
+    # -------------------------
+    # ROUTES DÉPENSES
+    # -------------------------
+    @app.route('/depenses')
+    @login_required
+    def depenses():
+        all_depenses = Depense.query.order_by(Depense.date.desc()).all()
+        return render_template('depenses.html', depenses=all_depenses)
 
-    # Gestion des erreurs
+    @app.route('/depenses/add', methods=['POST'])
+    @login_required
+    def add_depense():
+        libelle = request.form.get('libelle')
+        montant = request.form.get('montant')
+        description = request.form.get('description', '')
+
+        if not libelle or not montant:
+            flash("Veuillez remplir tous les champs obligatoires.", "danger")
+            return redirect(url_for('depenses'))
+
+        try:
+            montant = float(montant)
+        except:
+            flash("Montant invalide.", "danger")
+            return redirect(url_for('depenses'))
+
+        d = Depense(libelle=libelle, montant=montant, description=description)
+        db.session.add(d)
+        db.session.commit()
+
+        flash("Dépense enregistrée avec succès.", "success")
+        return redirect(url_for('depenses'))
+
+    # -------------------------
+    # GESTION D’ERREURS
+    # -------------------------
     @app.errorhandler(404)
     def not_found_error(error):
         return jsonify({'error': 'Ressource non trouvée'}), 404
@@ -171,7 +205,7 @@ def create_app():
             pass
         return jsonify({'error': 'Erreur interne du serveur'}), 500
 
-    # Middleware pour les cookies de session
+    # Middleware pour cookies
     @app.after_request
     def after_request(response):
         response.headers.add('Access-Control-Allow-Credentials', 'true')
@@ -181,12 +215,11 @@ def create_app():
 
 
 # -------------------------
-# Initialisation de la base de données
+# Initialisation DB
 # -------------------------
 def init_database(app):
     with app.app_context():
         db.create_all()
-        # Vérifie si des données existent déjà
         if User.query.first() is None:
             init_demo_data()
             print("✅ Base de données initialisée avec succès!")
@@ -209,7 +242,6 @@ def main():
 
     url = f"http://{host}:{port}"
 
-    # ⭐⭐⭐ OUVRIR LE NAVIGATEUR AUTOMATIQUEMENT ⭐⭐⭐
     import webbrowser
     import threading
 
@@ -217,7 +249,6 @@ def main():
         webbrowser.open(url)
 
     threading.Timer(1.5, ouvrir_navigateur).start()
-    # ------------------------------------------------
 
     print(f"📍 URL: {url}")
     print("⏹️  Ctrl+C pour arrêter le serveur")

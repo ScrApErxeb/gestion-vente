@@ -101,25 +101,43 @@
 <!-- Analyse de rentabilité -->
 <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 20px;">
     <h3 style="margin-bottom: 20px;">💹 Analyse de Rentabilité</h3>
+    
     <div class="stat-cards">
+        
         <div class="stat-card">
             <div class="label">Chiffre d'affaires</div>
             <div class="value" id="rent-ca" style="color: #3498db;">0 F</div>
         </div>
+
         <div class="stat-card">
             <div class="label">Coût d'achat total</div>
             <div class="value" id="rent-cout" style="color: #e74c3c;">0 F</div>
         </div>
+
         <div class="stat-card">
             <div class="label">Bénéfice brut</div>
             <div class="value" id="rent-benefice" style="color: #27ae60;">0 F</div>
         </div>
+
         <div class="stat-card">
             <div class="label">Marge brute (%)</div>
             <div class="value" id="rent-marge-pct" style="color: #27ae60;">0%</div>
         </div>
+
+        <!-- ⭐ NOUVELLE CARTE : Total des dépenses -->
+        <div class="stat-card">
+            <div class="label">Total des dépenses</div>
+            <div class="value" id="rent-depenses" style="color: #d35400;">0 F</div>
+        </div>
+
+        <!-- ⭐ NOUVELLE CARTE : Bénéfice net -->
+        <div class="stat-card">
+            <div class="label">Bénéfice net</div>
+            <div class="value" id="rent-benefice-net" style="color: #2ecc71;">0 F</div>
+        </div>
+
     </div>
-    
+
     <h4 style="margin: 25px 0 15px 0;">🎯 Produits les plus rentables</h4>
     <div id="produits-rentables"></div>
 </div>

@@ -1,0 +1,93 @@
+/* =====================================================
+   Dépenses - Style simple, propre et léger
+   ===================================================== */
+
+/* Conteneur principal */
+.container {
+    animation: fadeIn 0.25s ease-out;
+}
+
+/* Titre de page */
+.container h2 {
+    font-weight: 600;
+    color: #333;
+}
+
+/* --- Cartes (formulaire + liste) --- */
+.card {
+    border-radius: 8px;
+    border: 1px solid #e6e6e6;
+    box-shadow: 0px 2px 6px rgba(0,0,0,0.05);
+}
+
+.card-header {
+    background: #f8f9fa;
+    font-weight: 600;
+    border-bottom: 1px solid #e6e6e6;
+}
+
+.card-body {
+    background: white;
+}
+
+/* --- Formulaire --- */
+.form-label {
+    font-weight: 500;
+}
+
+.form-control {
+    border-radius: 6px;
+    border: 1px solid #d7d7d7;
+}
+
+.form-control:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 3px rgba(0,123,255,0.3);
+}
+
+/* Bouton */
+.btn-primary {
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-weight: 500;
+}
+
+/* --- Tableau --- */
+.table {
+    font-size: 15px;
+    background: white;
+}
+
+.table thead tr {
+    background: #f1f1f1;
+}
+
+.table th {
+    font-weight: 600;
+    color: #444;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.table-striped tbody tr:nth-of-type(odd) {
+    background: #fafafa;
+}
+
+.table-bordered td, 
+.table-bordered th {
+    border: 1px solid #e2e2e2;
+}
+
+/* Message "aucune dépense" */
+.table td.text-center {
+    color: #777;
+    font-style: italic;
+}
+
+/* Animation légère */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0); }
+}

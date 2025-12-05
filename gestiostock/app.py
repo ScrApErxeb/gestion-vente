@@ -207,10 +207,22 @@ def main():
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('DEBUG', 'True').lower() == 'true'
 
-    print(f"📍 URL: http://{host}:{port}")
+    url = f"http://{host}:{port}"
+
+    # ⭐⭐⭐ OUVRIR LE NAVIGATEUR AUTOMATIQUEMENT ⭐⭐⭐
+    import webbrowser
+    import threading
+
+    def ouvrir_navigateur():
+        webbrowser.open(url)
+
+    threading.Timer(1.5, ouvrir_navigateur).start()
+    # ------------------------------------------------
+
+    print(f"📍 URL: {url}")
     print("⏹️  Ctrl+C pour arrêter le serveur")
 
-    app.run(host=host, port=port, debug=debug, use_reloader=True)
+    app.run(host=host, port=port, debug=debug, use_reloader=False)
 
 
 if __name__ == '__main__':

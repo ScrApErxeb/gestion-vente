@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, render_template
 from flask_login import login_required, current_user
 from sqlalchemy import or_
-from models import Vente, Produit, Client, MouvementStock, db, VenteItem
+from models import Vente, Produit, Client, MouvementStock, db, VenteItem, ParametreSysteme, Paiement, MouvementCaisse
 from datetime import datetime
 import random
 from utils.export import exporter_facture_pdf
@@ -241,6 +241,36 @@ def create_vente_api():
         vente.montant_total = total_vente
 
         db.session.add(vente)
+
+        # Si la vente est payée immédiatement, créer un paiement et créditer la caisse
+        # (statut_paiement peut être 'payé' ou 'crédit' selon l'usage)
+        if vente.statut_paiement == 'payé' or mode_paiement.lower() != 'crédit':
+            # flush to get vente.id
+            db.session.flush()
+
+            # Créer paiement
+            paiement = Paiement(vente_id=vente.id, montant=vente.montant_total, mode_paiement=mode_paiement)
+            db.session.add(paiement)
+
+            # Mettre à jour solde caisse
+            solde_avant = ParametreSysteme.get_value("solde_caisse", 0)
+            solde_apres = solde_avant + (vente.montant_total or 0)
+            ParametreSysteme.set_value("solde_caisse", solde_apres, type_valeur="number")
+
+            # Historiser mouvement de caisse
+            utilisateur = getattr(current_user, 'username', None) if current_user and hasattr(current_user, 'username') else None
+            mouvement = MouvementCaisse(
+                type='encaisse',
+                montant=vente.montant_total,
+                paiement_id=paiement.id,
+                vente_id=vente.id,
+                utilisateur=utilisateur,
+                solde_avant=solde_avant,
+                solde_apres=solde_apres,
+                notes='Paiement automatique lors création vente'
+            )
+            db.session.add(mouvement)
+
         db.session.commit()
 
         return jsonify({'message': 'Vente enregistrée', 'vente_id': vente.id, 'numero_facture': numero_facture}), 201

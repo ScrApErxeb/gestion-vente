@@ -9,6 +9,7 @@ from .produit import Produit
 from .client import Client
 from .vente import Vente, VenteItem
 from .paiement import Paiement
+from .mouvement_caisse import MouvementCaisse
 from .mouvement_stock import MouvementStock
 from .fournisseur import Fournisseur
 from .depense import Depense
@@ -25,5 +26,5 @@ __all__ = [
     'db',
     'User', 'Categorie','Depense', 'Produit', 'Client', 'Vente', 'VenteItem',
     'Paiement', 'MouvementStock', 'Fournisseur', 'Commande', 'CommandeItem',
-    'Notification', 'ParametreSysteme'
+    'Notification', 'ParametreSysteme', 'MouvementCaisse'
 ]

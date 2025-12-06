@@ -10,7 +10,6 @@ from flask_cors import CORS
 from config import Config
 from models import db, User
 
-from models.depense import Depense
 from utils.demo_data import init_demo_data
 
 
@@ -20,6 +19,7 @@ from utils.demo_data import init_demo_data
 def register_blueprints(app):
     """Enregistre tous les blueprints de l'application"""
     try:
+        # Importer les blueprints
         from routes.auth import auth_bp
         from routes.clients import clients_bp
         from routes.produits import produits_bp
@@ -29,7 +29,9 @@ def register_blueprints(app):
         from routes.statistiques import statistiques_bp
         from routes.api import api_bp
         from routes.exporter import exporter_bp
+        from routes.depenses import depenses_bp
 
+        # Enregistrer les blueprints
         app.register_blueprint(auth_bp)
         app.register_blueprint(clients_bp)
         app.register_blueprint(produits_bp)
@@ -39,6 +41,7 @@ def register_blueprints(app):
         app.register_blueprint(statistiques_bp)
         app.register_blueprint(exporter_bp, url_prefix='/exporter')
         app.register_blueprint(api_bp, url_prefix='/api')
+        app.register_blueprint(depenses_bp)
 
         print("✅ Tous les blueprints ont été enregistrés avec succès !")
 
@@ -66,6 +69,16 @@ def create_app():
     @login_manager.user_loader
     def load_user(user_id):
         return User.query.get(int(user_id))
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        """
+        Empêche Flask-Login de renvoyer du HTML pour les requêtes AJAX.
+        """
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"error": "Authentification requise"}), 401
+        return redirect(url_for(login_manager.login_view))
+
 
     # Blueprints
     register_blueprints(app)
@@ -157,41 +170,21 @@ def create_app():
             print(f"Erreur API dashboard: {e}")
             return jsonify({'error': str(e)}), 500
 
-    # -------------------------
-    # ROUTES DÉPENSES
-    # -------------------------
-    @app.route('/depenses')
-    @login_required
-    def depenses():
-        all_depenses = Depense.query.order_by(Depense.date.desc()).all()
-        return render_template('depenses.html', depenses=all_depenses)
+    print(app.url_map)
 
-    @app.route('/depenses/add', methods=['POST'])
-    @login_required
-    def add_depense():
-        libelle = request.form.get('libelle')
-        montant = request.form.get('montant')
-        description = request.form.get('description', '')
-
-        if not libelle or not montant:
-            flash("Veuillez remplir tous les champs obligatoires.", "danger")
-            return redirect(url_for('depenses'))
-
-        try:
-            montant = float(montant)
-        except:
-            flash("Montant invalide.", "danger")
-            return redirect(url_for('depenses'))
-
-        d = Depense(libelle=libelle, montant=montant, description=description)
-        db.session.add(d)
-        db.session.commit()
-
-        flash("Dépense enregistrée avec succès.", "success")
-        return redirect(url_for('depenses'))
+    # Debug helper: list registered endpoints when in debug mode
+    if app.config.get('DEBUG', False):
+        @app.route('/__debug/routes')
+        def debug_routes():
+            # Return a simple list of endpoint names and their rules to help local debugging
+            routes = []
+            for rule in app.url_map.iter_rules():
+                routes.append({'rule': str(rule), 'endpoint': rule.endpoint, 'methods': sorted(list(rule.methods))})
+            from flask import jsonify
+            return jsonify(sorted(routes, key=lambda r: r['endpoint']))
 
     # -------------------------
-    # GESTION D’ERREURS
+    # GESTION D'ERREURS
     # -------------------------
     @app.errorhandler(404)
     def not_found_error(error):

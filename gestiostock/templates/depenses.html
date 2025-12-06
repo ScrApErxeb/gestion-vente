@@ -1,70 +1,75 @@
 {% extends "base.html" %}
-
 {% block content %}
-<link rel="stylesheet" href="{{ url_for('static', filename='css/depenses.css') }}">
 
-<div class="container mt-4">
-    <h2 class="mb-4">Gestion des Dépenses</h2>
+<div class="page-header">
+    <h2>Gestion des dépenses</h2>
+</div>
 
-    <!-- Formulaire ajout dépense -->
-    <div class="card mb-4">
-        <div class="card-header">
-            Nouvelle dépense
+<div id="alerts"></div>
+
+<div class="card mb-3">
+    <div class="card-body d-flex justify-content-between align-items-center">
+        <div>
+            <strong>💼 Solde caisse actuel :</strong>
+            <span id="solde-caisse">{{ solde }} F</span>
         </div>
+        <div>
+            <button class="btn btn-sm btn-primary" id="btn-new-depense">Nouvelle dépense</button>
+        </div>
+    </div>
+</div>
+
+<div id="depense-form-container" style="display:none;">
+    <div class="card mb-3">
         <div class="card-body">
-            <form action="{{ url_for('add_depense') }}" method="POST">
-                <div class="mb-3">
-                    <label class="form-label">Libellé</label>
-                    <input type="text" name="libelle" class="form-control" required>
+            <form id="depense-form" method="post" action="{{ url_for('depenses.depenses_add') }}">
+                <div class="form-group">
+                    <label>Libellé</label>
+                    <input class="form-control" type="text" name="libelle" required />
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Montant (FCFA)</label>
-                    <input type="number" name="montant" step="0.01" class="form-control" required>
+                <div class="form-group">
+                    <label>Montant</label>
+                    <input class="form-control" type="number" step="0.01" name="montant" required />
                 </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Description (optionnel)</label>
-                    <textarea name="description" class="form-control"></textarea>
+                <div class="form-group">
+                    <label>Description</label>
+                    <textarea class="form-control" name="description"></textarea>
                 </div>
-
-                <button class="btn btn-primary">Ajouter la dépense</button>
+                <div class="form-group mt-2">
+                    <button class="btn btn-success" type="submit">Enregistrer</button>
+                    <button class="btn btn-secondary" type="button" id="btn-cancel">Annuler</button>
+                </div>
             </form>
         </div>
     </div>
-
-    <!-- Liste des dépenses -->
-    <div class="card">
-        <div class="card-header">
-            Historique des dépenses
-        </div>
-        <div class="card-body">
-            <table class="table table-bordered table-striped">
-                <thead>
-                    <tr>
-                        <th>Date</th>
-                        <th>Libellé</th>
-                        <th>Montant (FCFA)</th>
-                        <th>Description</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for d in depenses %}
-                    <tr>
-                        <td>{{ d.date.strftime("%d/%m/%Y %H:%M") }}</td>
-                        <td>{{ d.libelle }}</td>
-                        <td>{{ d.montant }}</td>
-                        <td>{{ d.description or "-" }}</td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="4" class="text-center">Aucune dépense enregistrée.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-
 </div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <table class="table mb-0">
+            <thead class="thead-light">
+                <tr>
+                    <th>Libellé</th>
+                    <th>Montant</th>
+                    <th>Description</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody id="depenses-tbody">
+            {% for d in depenses %}
+                <tr data-id="{{ d.id }}">
+                    <td>{{ d.libelle }}</td>
+                    <td>{{ '%.2f'|format(d.montant) }} F</td>
+                    <td>{{ d.description }}</td>
+                    <td>{{ d.date.strftime('%d/%m/%Y %H:%M') }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/depenses.js') }}"></script>
+
 {% endblock %}
+

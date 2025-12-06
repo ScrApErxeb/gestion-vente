@@ -29,9 +29,60 @@ class ProduitsManager {
         // Formulaire produit
         document.getElementById('form-produit').addEventListener('submit', (e) => this.saveProduit(e));
 
+        // Formulaire import produits
+        const importForm = document.getElementById('form-import-produits');
+        if (importForm) {
+            importForm.addEventListener('submit', (e) => this.handleImportSubmit(e));
+        }
+
         // Calcul automatique des marges
         document.getElementById('produit-prix-achat').addEventListener('input', () => this.calculerMarge());
         document.getElementById('produit-prix-vente').addEventListener('input', () => this.calculerMarge());
+    }
+
+    async importerProduits() {
+        // Ouvre le modal d'import
+        this.toggleModal('modal-import-produits');
+    }
+
+    async handleImportSubmit(event) {
+        event.preventDefault();
+        const fileInput = document.getElementById('import-file');
+        if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+            this.showError('Veuillez sélectionner un fichier CSV ou Excel à importer.');
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+            this.showLoading(true);
+
+            const response = await fetch('/api/import/produits', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (response.ok) {
+                this.toggleModal('modal-import-produits');
+                fileInput.value = '';
+                await this.loadProduits();
+                const msg = result.message || `Import terminé. Créés: ${result.created || 0}, Mis à jour: ${result.updated || 0}`;
+                this.showSuccess(msg);
+                console.log('Import résultat:', result);
+            } else {
+                throw new Error(result.error || result.message || 'Erreur lors de l\'import');
+            }
+        } catch (error) {
+            console.error('❌ Erreur import produits:', error);
+            this.showError('Erreur lors de l\'import: ' + error.message);
+        } finally {
+            this.showLoading(false);
+        }
     }
 
     async loadProduits() {
@@ -422,5 +473,11 @@ function toggleModal(modalId) {
 function exporterProduits() {
     if (produitsManager) {
         produitsManager.exporterProduits();
+    }
+}
+
+function importerProduits() {
+    if (produitsManager) {
+        produitsManager.importerProduits();
     }
 }

@@ -13,6 +13,9 @@
             <button class="btn btn-secondary" onclick="exporterProduits()">
                 📥 Exporter Excel
             </button>
+            <button class="btn btn-outline-secondary" onclick="importerProduits()" title="Importer des produits depuis un fichier">
+                📤 Importer
+            </button>
             <button class="btn btn-primary" onclick="toggleModal('modal-produit')">
                 ➕ Nouveau Produit
             </button>
@@ -155,6 +158,29 @@
             <div style="display: flex; gap: 10px; margin-top: 25px;">
                 <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
                 <button type="button" class="btn btn-secondary" onclick="toggleModal('modal-produit')">❌ Annuler</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Import Produits -->
+<div id="modal-import-produits" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2>Importer des produits</h2>
+            <span class="modal-close" onclick="toggleModal('modal-import-produits')">&times;</span>
+        </div>
+        <form id="form-import-produits" enctype="multipart/form-data">
+            <div class="form-group">
+                <label>Fichier (CSV ou Excel .xlsx)</label>
+                <input type="file" name="file" id="import-file" accept=".csv, .xlsx" required>
+            </div>
+            <div class="form-group">
+                <small>Colonnes supportées: reference, nom, description, prix_achat, prix_vente, tva, stock_actuel, stock_min, categorie, fournisseur, unite_mesure, emplacement, actif</small>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button type="submit" class="btn btn-primary">📥 Importer</button>
+                <button type="button" class="btn btn-secondary" onclick="toggleModal('modal-import-produits')">Annuler</button>
             </div>
         </form>
     </div>

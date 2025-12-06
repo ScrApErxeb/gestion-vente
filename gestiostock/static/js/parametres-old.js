@@ -27,7 +27,7 @@ function switchTab(tabName) {
     event.target.style.borderBottom = '3px solid #3498db';
 }
 
-// === GESTION DES FORMULAIRES ===
+// === GESTION DES FORMULES ENTREPRISE ET PARAMETRES ===
 
 // Sauvegarder les informations entreprise
 async function saveEnterprise(event) {
@@ -190,8 +190,8 @@ function afficherCategories(data) {
     
     if (data.length === 0) {
         container.innerHTML = `
-            <div style="text-align: center; padding: 30px; color: #7f8c8d;">
-                <div style="font-size: 48px; margin-bottom: 15px;">📂</div>
+            <div class="empty-state">
+                <div class="icon">📂</div>
                 <h3>Aucune catégorie</h3>
                 <p>Créez votre première catégorie pour organiser vos produits</p>
             </div>
@@ -200,15 +200,15 @@ function afficherCategories(data) {
     }
     
     container.innerHTML = data.map(cat => `
-        <div style="padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
+        <div class="list-item">
+            <div class="list-item-content">
                 <strong>${escapeHtml(cat.nom)}</strong>
                 <div style="font-size: 12px; color: #7f8c8d;">
                     ${cat.description || 'Aucune description'}
                     <span style="margin-left: 10px;">(${cat.nb_produits || 0} produits)</span>
                 </div>
             </div>
-            <div>
+            <div class="list-item-actions">
                 <button class="btn btn-secondary btn-sm" onclick="editCategorie(${cat.id})" title="Modifier">
                     ✏️
                 </button>
@@ -240,11 +240,8 @@ async function saveCategorie(event) {
     submitBtn.disabled = true;
     
     try {
-        const method = form.dataset.editId ? 'PUT' : 'POST';
-        const url = form.dataset.editId ? `/categories/${form.dataset.editId}` : '/categories';
-        
-        const response = await fetch(url, {
-            method: method,
+        const response = await fetch('/categories', {
+            method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(data)
         });
@@ -252,7 +249,7 @@ async function saveCategorie(event) {
         if (response.ok) {
             toggleModal('modal-categorie');
             loadCategories();
-            showNotification(form.dataset.editId ? '✅ Catégorie modifiée!' : '✅ Catégorie créée!', 'success');
+            showNotification('✅ Catégorie enregistrée avec succès!', 'success');
         } else {
             const error = await response.json();
             throw new Error(error.error || 'Erreur lors de l\'enregistrement');
@@ -275,6 +272,7 @@ async function editCategorie(id) {
     document.getElementById('cat-nom').value = categorie.nom || '';
     document.getElementById('cat-description').value = categorie.description || '';
     
+    // Stocker l'ID pour la mise à jour
     const form = document.getElementById('form-categorie');
     form.dataset.editId = id;
     
@@ -302,7 +300,7 @@ async function deleteCategorie(id) {
         
         if (response.ok) {
             loadCategories();
-            showNotification('✅ Catégorie supprimée!', 'success');
+            showNotification('✅ Catégorie supprimée avec succès!', 'success');
         } else {
             throw new Error('Erreur lors de la suppression');
         }
@@ -330,12 +328,12 @@ async function loadUsers() {
 
 // Afficher les utilisateurs
 function afficherUsers(data) {
-    const container = document.getElementById('users-list');
+    const container = document.getElementById('other-users');
     
     if (data.length === 0) {
         container.innerHTML = `
-            <div style="text-align: center; padding: 30px; color: #7f8c8d;">
-                <div style="font-size: 48px; margin-bottom: 15px;">👥</div>
+            <div class="empty-state" style="padding: 20px;">
+                <div class="icon">👥</div>
                 <p>Aucun autre utilisateur</p>
             </div>
         `;
@@ -343,18 +341,18 @@ function afficherUsers(data) {
     }
     
     container.innerHTML = data.map(user => `
-        <div style="padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-            <div>
+        <div class="list-item">
+            <div class="list-item-content">
                 <div style="display: flex; align-items: center; gap: 10px;">
                     <strong>${escapeHtml(user.prenom)} ${escapeHtml(user.nom)}</strong>
-                    <span class="badge badge-${getRoleBadgeClass(user.role)}" style="font-size: 10px;">${user.role.toUpperCase()}</span>
-                    ${!user.actif ? '<span class="badge badge-danger" style="font-size: 10px;">INACTIF</span>' : ''}
+                    <span class="badge badge-${getRoleBadgeClass(user.role)}">${user.role.toUpperCase()}</span>
+                    ${!user.actif ? '<span class="badge badge-danger">INACTIF</span>' : ''}
                 </div>
                 <div style="font-size: 12px; color: #7f8c8d;">
-                    ${escapeHtml(user.email)} • ${user.telephone || 'Pas de téléphone'}
+                    ${escapeHtml(user.email)} • ${user.telephone || 'Aucun téléphone'}
                 </div>
             </div>
-            <div>
+            <div class="list-item-actions">
                 <button class="btn btn-secondary btn-sm" onclick="editUser(${user.id})" title="Modifier">
                     ✏️
                 </button>
@@ -396,7 +394,7 @@ async function toggleUserStatus(userId, currentStatus) {
         
         if (response.ok) {
             loadUsers();
-            showNotification(`✅ Utilisateur ${action}!`, 'success');
+            showNotification(`✅ Utilisateur ${action} avec succès!`, 'success');
         } else {
             throw new Error('Erreur lors du changement de statut');
         }
@@ -406,81 +404,61 @@ async function toggleUserStatus(userId, currentStatus) {
     }
 }
 
-// Ajouter un utilisateur
-async function saveUser(event) {
-    event.preventDefault();
-    
-    const form = event.target;
-    const formData = new FormData(form);
-    const data = Object.fromEntries(formData);
-    
-    const submitBtn = form.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'Enregistrement...';
-    submitBtn.disabled = true;
-    
-    try {
-        const response = await fetch('/api/users', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        });
-        
-        if (response.ok) {
-            toggleModal('modal-utilisateur');
-            loadUsers();
-            showNotification('✅ Utilisateur créé!', 'success');
-        } else {
-            const error = await response.json();
-            throw new Error(error.message || 'Erreur lors de la création');
-        }
-    } catch (error) {
-        console.error('Erreur:', error);
-        showNotification('❌ ' + error.message, 'error');
-    } finally {
-        submitBtn.textContent = originalText;
-        submitBtn.disabled = false;
-    }
-}
-
-// === ACTIONS ===
-
 // Exporter toutes les données
 async function exporterToutesDonnees() {
     const btn = document.getElementById('btn-export-all');
     
     try {
         const originalText = btn.innerHTML;
-        btn.innerHTML = '⏳ Export...';
+        btn.innerHTML = '⏳ Export en cours...';
         btn.disabled = true;
         
-        showNotification('🔄 Export en cours...', 'info');
+        showNotification('🔄 Début de l\'export complet des données...', 'info');
         
-        const response = await fetch('/api/export/all-data');
+        const response = await fetch('/api/export/all-data', {
+            method: 'GET',
+            headers: {'Content-Type': 'application/json'}
+        });
         
         if (response.ok) {
+            // Télécharger le fichier
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
+            a.style.display = 'none';
             a.href = url;
-            a.download = `export-${new Date().toISOString().split('T')[0]}.xlsx`;
+            
+            // Récupérer le nom du fichier
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'export_complet.xlsx';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+            
+            a.download = filename;
+            document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
             
-            showNotification('✅ Export réussi!', 'success');
+            showNotification('✅ Export terminé: ' + filename, 'success');
         } else {
-            throw new Error('Erreur lors de l\'export');
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors de l\'export');
         }
     } catch (error) {
         console.error('❌ Erreur:', error);
-        showNotification('❌ ' + error.message, 'error');
+        showNotification('❌ Erreur lors de l\'export: ' + error.message, 'error');
     } finally {
         btn.innerHTML = '📥 Exporter toutes les données';
         btn.disabled = false;
     }
 }
 
-// Exporter une sauvegarde
+// Exporter une sauvegarde de la base
 async function exportBackup() {
     const btn = document.getElementById('btn-export-backup');
     
@@ -489,9 +467,12 @@ async function exportBackup() {
         btn.innerHTML = '⏳ Sauvegarde...';
         btn.disabled = true;
         
-        showNotification('💾 Sauvegarde en cours...', 'info');
+        showNotification('💾 Création de la sauvegarde...', 'info');
         
-        const response = await fetch('/api/export/backup');
+        const response = await fetch('/api/export/backup', {
+            method: 'GET',
+            headers: {'Content-Type': 'application/octet-stream'}
+        });
         
         if (response.ok) {
             const blob = await response.blob();
@@ -502,15 +483,123 @@ async function exportBackup() {
             a.click();
             window.URL.revokeObjectURL(url);
             
-            showNotification('✅ Sauvegarde réussie!', 'success');
+            showNotification('✅ Sauvegarde réussie', 'success');
         } else {
             throw new Error('Erreur lors de la sauvegarde');
         }
     } catch (error) {
         console.error('❌ Erreur:', error);
-        showNotification('❌ ' + error.message, 'error');
+        showNotification('❌ Erreur: ' + error.message, 'error');
     } finally {
         btn.innerHTML = '💾 Sauvegarder la base';
+        btn.disabled = false;
+    }
+}
+
+// === ACTIONS SYSTÈME ===
+
+// Initialiser les actions système
+function initializeSystemActions() {
+    // Les fonctions sont maintenant directement accessibles
+}
+
+// Exporter toutes les données
+async function exporterToutesDonnees() {
+    const btn = document.getElementById('btn-export-all');
+    
+    try {
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '⏳ Export en cours...';
+        btn.disabled = true;
+        
+        showNotification('🔄 Début de l\'export complet des données...', 'info');
+        
+        const response = await fetch('/api/export/all-data', {
+            method: 'GET',
+            headers: {'Content-Type': 'application/json'}
+        });
+        
+        if (response.ok) {
+            // Télécharger le fichier
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            
+            // Récupérer le nom du fichier
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'export_complet.xlsx';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+            
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            showNotification('✅ Export terminé: ' + filename, 'success');
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors de l\'export');
+        }
+    } catch (error) {
+        console.error('❌ Erreur:', error);
+        showNotification('❌ Erreur lors de l\'export: ' + error.message, 'error');
+    } finally {
+        btn.innerHTML = '📥 Exporter toutes les données';
+        btn.disabled = false;
+    }
+}
+        
+        addLog('🔄 Début de l\'export complet des données...');
+        
+        const response = await fetch('/api/export/all-data', {
+            method: 'GET',
+            headers: {'Content-Type': 'application/json'}
+        });
+        
+        if (response.ok) {
+            // Télécharger le fichier
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            
+            // Récupérer le nom du fichier
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'export_complet.xlsx';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+            
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            addLog('✅ Export terminé: ' + filename);
+            showNotification('✅ Export terminé avec succès!', 'success');
+        } else {
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors de l\'export');
+        }
+    } catch (error) {
+        console.error('❌ Erreur:', error);
+        addLog('❌ Erreur export: ' + error.message);
+        showNotification('❌ Erreur lors de l\'export: ' + error.message, 'error');
+    } finally {
+        btn.innerHTML = '📥 Exporter toutes les données';
         btn.disabled = false;
     }
 }
@@ -526,6 +615,8 @@ async function nettoyerNotifications() {
         const originalText = btn.innerHTML;
         btn.innerHTML = '⏳ Nettoyage...';
         
+        addLog('🗑️ Nettoyage des notifications...');
+        
         const response = await fetch('/api/notifications/nettoyer', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'}
@@ -533,13 +624,16 @@ async function nettoyerNotifications() {
         
         if (response.ok) {
             const result = await response.json();
-            showNotification(`🗑️ ${result.message || 'Notifications nettoyées'}`, 'success');
+            addLog('✅ Notifications nettoyées: ' + result.message);
+            showNotification(`🗑️ ${result.message}`, 'success');
         } else {
-            throw new Error('Erreur lors du nettoyage');
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors du nettoyage');
         }
     } catch (error) {
         console.error('❌ Erreur:', error);
-        showNotification('❌ ' + error.message, 'error');
+        addLog('❌ Erreur nettoyage: ' + error.message);
+        showNotification('❌ Erreur: ' + error.message, 'error');
     } finally {
         btn.innerHTML = '🗑️ Nettoyer les notifications';
         btn.disabled = false;
@@ -548,11 +642,11 @@ async function nettoyerNotifications() {
 
 // Réinitialiser la base de données
 async function reinitialiserBaseDeDonnees() {
-    if (!confirm('⚠️ DANGER! Êtes-vous ABSOLUMENT sûr?\n\nCette action supprimera TOUTES les données!')) {
+    if (!confirm('⚠️ DANGER! Êtes-vous ABSOLUMENT sûr?\n\nCette action supprimera TOUTES les données et ne peut pas être annulée!')) {
         return;
     }
     
-    if (!confirm('❌ CONFIRMATION: Toutes les données seront PERDUES!')) {
+    if (!confirm('❌ CONFIRMATION FINALE: Toutes les données seront PERDUES!')) {
         return;
     }
     
@@ -563,64 +657,163 @@ async function reinitialiserBaseDeDonnees() {
         const originalText = btn.innerHTML;
         btn.innerHTML = '⏳ Réinitialisation...';
         
+        addLog('⚠️ Début de la réinitialisation de la base de données...');
+        
         const response = await fetch('/api/system/reset-database', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'}
         });
         
         if (response.ok) {
-            showNotification('✅ Base réinitialisée!', 'success');
+            const result = await response.json();
+            addLog('✅ Base de données réinitialisée: ' + result.message);
+            showNotification('✅ Base de données réinitialisée avec succès!', 'success');
+            
+            // Rediriger après réinitialisation
             setTimeout(() => {
                 window.location.href = '/';
-            }, 2000);
+            }, 3000);
         } else {
-            throw new Error('Erreur lors de la réinitialisation');
+            const error = await response.json();
+            throw new Error(error.error || 'Erreur lors de la réinitialisation');
         }
     } catch (error) {
         console.error('❌ Erreur:', error);
-        showNotification('❌ ' + error.message, 'error');
+        addLog('❌ Erreur réinitialisation: ' + error.message);
+        showNotification('❌ Erreur: ' + error.message, 'error');
     } finally {
         btn.innerHTML = '⚠️ Réinitialiser la base de données';
         btn.disabled = false;
     }
 }
 
+// === CONTRÔLE SYSTÈME ===
+
+// Mettre à jour le statut du système
+async function refreshSystemStatus() {
+    try {
+        const response = await fetch('/api/system/status');
+        const data = await response.json();
+        
+        const statusElement = document.getElementById('system-status');
+        const infoElement = document.getElementById('system-info');
+        
+        if (data.status === 'running') {
+            statusElement.innerHTML = '🟢 EN MARCHE';
+            statusElement.className = 'status-indicator status-running';
+        } else {
+            statusElement.innerHTML = '🔴 ARRÊTÉ';
+            statusElement.className = 'status-indicator status-stopped';
+        }
+        
+        infoElement.innerHTML = `Version ${data.version} | Démarrage: ${data.started_at}`;
+        
+        addLog(`🔍 Statut système: ${data.status}`, 'info');
+        
+    } catch (error) {
+        document.getElementById('system-status').innerHTML = '❌ HORS LIGNE';
+        document.getElementById('system-status').className = 'status-indicator status-unknown';
+        addLog('❌ Impossible de contacter le serveur', 'error');
+    }
+}
+
+// Contrôler le système
+async function controlSystem(action) {
+    const actions = {
+        'start': { text: 'démarrage', emoji: '▶️' },
+        'stop': { text: 'arrêt', emoji: '⏹️' }, 
+        'restart': { text: 'redémarrage', emoji: '🔄' }
+    };
+    
+    addLog(`${actions[action].emoji} Tentative de ${actions[action].text} du système...`, 'info');
+    
+    // Désactiver les boutons temporairement
+    const buttons = ['btn-start', 'btn-stop', 'btn-restart'];
+    buttons.forEach(btnId => {
+        const btn = document.getElementById(btnId);
+        if (btn) btn.disabled = true;
+    });
+    
+    try {
+        const response = await fetch('/api/system/control', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ action: action })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            addLog(`✅ ${data.message}`, 'success');
+            showNotification(data.message, 'success');
+            
+            // Mettre à jour le statut après un délai
+            setTimeout(refreshSystemStatus, 2000);
+        } else {
+            addLog(`❌ Erreur: ${data.message}`, 'error');
+            showNotification(data.message, 'error');
+        }
+        
+    } catch (error) {
+        addLog(`❌ Erreur réseau: ${error.message}`, 'error');
+        showNotification('Erreur de communication avec le serveur', 'error');
+    } finally {
+        // Réactiver les boutons
+        setTimeout(() => {
+            buttons.forEach(btnId => {
+                const btn = document.getElementById(btnId);
+                if (btn) btn.disabled = false;
+            });
+        }, 3000);
+    }
+}
+
+// Gestion des logs
+function addLog(message, type = 'info') {
+    const logsDiv = document.getElementById('system-logs');
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = document.createElement('div');
+    
+    const typeClass = `log-${type}`;
+    logEntry.innerHTML = `<span class="log-timestamp">[${timestamp}]</span> <span class="${typeClass}">${message}</span>`;
+    
+    logsDiv.appendChild(logEntry);
+    logsDiv.scrollTop = logsDiv.scrollHeight;
+}
+
+function clearLogs() {
+    document.getElementById('system-logs').innerHTML = '<div class="log-info">> Journal effacé...</div>';
+    addLog('🗑️ Journal effacé par l\'utilisateur', 'info');
+}
+
+function exportLogs() {
+    const logs = document.getElementById('system-logs').innerText;
+    const blob = new Blob([logs], { type: 'text/plain' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `system-logs-${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    addLog('📥 Journal exporté', 'info');
+}
+
 // === FONCTIONS UTILITAIRES ===
 
 // Afficher une notification
 function showNotification(message, type = 'info') {
+    // Supprimer les notifications existantes
     const existingNotifications = document.querySelectorAll('.notification');
     existingNotifications.forEach(notif => notif.remove());
     
+    // Créer la nouvelle notification
     const notification = document.createElement('div');
     notification.className = `notification ${type}`;
     notification.textContent = message;
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 15px 20px;
-        border-radius: 8px;
-        color: white;
-        font-weight: 600;
-        z-index: 10000;
-        max-width: 400px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    `;
-    
-    if (type === 'success') {
-        notification.style.background = '#28a745';
-    } else if (type === 'error') {
-        notification.style.background = '#dc3545';
-    } else if (type === 'warning') {
-        notification.style.background = '#ffc107';
-        notification.style.color = '#000';
-    } else {
-        notification.style.background = '#17a2b8';
-    }
     
     document.body.appendChild(notification);
     
+    // Auto-suppression après 5 secondes
     setTimeout(() => {
         if (notification.parentNode) {
             notification.parentNode.removeChild(notification);
@@ -628,7 +821,7 @@ function showNotification(message, type = 'info') {
     }, 5000);
 }
 
-// Échapper le HTML
+// Échapper le HTML pour la sécurité
 function escapeHtml(unsafe) {
     if (!unsafe) return '';
     return unsafe
@@ -643,18 +836,37 @@ function escapeHtml(unsafe) {
 // Afficher/masquer le chargement
 function showLoading(elementId, show) {
     const element = document.getElementById(elementId);
-    if (element) {
-        if (show) {
-            element.innerHTML = '<div style="text-align: center; padding: 20px;">⏳ Chargement...</div>';
-        }
+    if (show) {
+        element.classList.add('loading');
+    } else {
+        element.classList.remove('loading');
     }
 }
 
 // === INITIALISATION ===
 document.addEventListener('DOMContentLoaded', function() {
-    // Charger les données par défaut
+    // Initialiser les données
     loadCategories();
     loadUsers();
+    initializeSystemActions();
     
-    console.log('🚀 Module paramètres initialisé');
+    // Initialiser le contrôle système
+    refreshSystemStatus();
+    
+    // Actualiser le statut toutes les 30 secondes
+    setInterval(refreshSystemStatus, 30000);
+    
+    // Premier log
+    addLog('🚀 Module de contrôle système initialisé', 'info');
+    
+    // Gestion des formulaires de paramètres
+    document.getElementById('form-entreprise').addEventListener('submit', (e) => {
+        e.preventDefault();
+        showNotification('✅ Informations entreprise enregistrées!', 'success');
+    });
+    
+    document.getElementById('form-parametres').addEventListener('submit', (e) => {
+        e.preventDefault();
+        showNotification('✅ Paramètres généraux enregistrés!', 'success');
+    });
 });

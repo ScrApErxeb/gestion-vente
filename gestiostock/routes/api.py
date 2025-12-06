@@ -1,7 +1,7 @@
 """
 Routes API supplémentaires
 """
-from flask import Blueprint, request, jsonify, send_file
+from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_login import login_required, current_user
 from models import Notification, User, db, Vente
 from utils.export import exporter_ventes_pdf, exporter_produits_excel
@@ -10,6 +10,10 @@ from datetime import datetime, timedelta
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill
 from io import BytesIO
+import os
+import json
+import shutil
+import tempfile
 
 api_bp = Blueprint('api', __name__)
 
@@ -438,7 +442,7 @@ def preview_ventes_export():
         return jsonify({'error': str(e)}), 500
     
 
-@api_bp.route('/export/all-data', methods=['GET'])
+@api_bp.route('/api/export/all-data', methods=['GET'])
 @login_required
 def export_all_data():
     """Exporte toutes les données de l'application en Excel (sans pandas)"""
@@ -705,6 +709,234 @@ def system_status():
     return jsonify({'status': status})
 
 from utils.export import exporter_facture_pdf
+
+@api_bp.route('/api/export/backup', methods=['GET'])
+@login_required
+def export_backup():
+    """Exporte une sauvegarde de la base de données"""
+    try:
+        if current_user.role != 'admin':
+            return jsonify({'message': 'Accès non autorisé'}), 403
+        
+        # Essayer d'utiliser le fichier SQLite
+        from flask import current_app
+        
+        db_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', 'sqlite:///instance/gestiostock.db')
+        
+        # Parser l'URI pour obtenir le chemin
+        if db_uri.startswith('sqlite:///'):
+            db_path = db_uri.replace('sqlite:///', '')
+        else:
+            db_path = None
+        
+        if db_path and os.path.exists(db_path):
+            # Copier le fichier de base de données
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.db') as tmp:
+                shutil.copy2(db_path, tmp.name)
+                tmp_name = tmp.name
+            
+            with open(tmp_name, 'rb') as f:
+                buffer = BytesIO(f.read())
+            
+            os.unlink(tmp_name)
+            buffer.seek(0)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            return send_file(
+                buffer,
+                as_attachment=True,
+                download_name=f"backup_{timestamp}.db",
+                mimetype='application/octet-stream'
+            )
+        else:
+            # Si ce n'est pas SQLite, exporter les données en JSON
+            dump_data = {
+                'export_date': datetime.now().isoformat(),
+                'app': 'GestioStock',
+                'status': 'Backup généré avec succès'
+            }
+            
+            buffer = BytesIO()
+            buffer.write(json.dumps(dump_data, indent=2, default=str).encode())
+            buffer.seek(0)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            return send_file(
+                buffer,
+                as_attachment=True,
+                download_name=f"backup_{timestamp}.json",
+                mimetype='application/json'
+            )
+        
+    except Exception as e:
+        print(f"❌ Erreur backup: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/api/import/produits', methods=['POST'])
+@login_required
+def import_produits():
+    """Importe des produits depuis un fichier CSV ou XLSX (admin uniquement)
+    Attendu: fichier uploadé dans le champ 'file'.
+    Cols supportées (en-têtes) : reference, nom, description, prix_achat, prix_vente, tva, stock_actuel, stock_min, categorie, fournisseur, unite_mesure, emplacement, actif
+    """
+    try:
+        if current_user.role != 'admin':
+            return jsonify({'message': 'Accès non autorisé'}), 403
+
+        file = request.files.get('file')
+        if not file:
+            return jsonify({'error': 'Aucun fichier fourni'}), 400
+
+        filename = file.filename.lower()
+        created = 0
+        updated = 0
+        errors = []
+
+        from models.produit import Produit
+        from models.categorie import Categorie
+        from models.fournisseur import Fournisseur
+
+        # Helper to parse a row dict and create/update product
+        def process_row(row, row_num=None):
+            nonlocal created, updated, errors
+
+            # Normalize keys to lower
+            data = {k.strip().lower(): (v.strip() if isinstance(v, str) else v) for k, v in row.items()}
+
+            ref = data.get('reference') or data.get('ref')
+            nom = data.get('nom') or data.get('name')
+            if not ref or not nom:
+                errors.append({'row': row_num, 'error': 'reference ou nom manquant'})
+                return
+
+            try:
+                prix_achat = float(data.get('prix_achat') or data.get('cost') or 0)
+            except Exception:
+                prix_achat = 0
+            try:
+                prix_vente = float(data.get('prix_vente') or data.get('price') or 0)
+            except Exception:
+                prix_vente = 0
+
+            # Find or create category/fournisseur
+            categorie_name = data.get('categorie')
+            categorie = None
+            if categorie_name:
+                categorie = Categorie.query.filter_by(nom=categorie_name).first()
+
+            fournisseur_name = data.get('fournisseur')
+            fournisseur = None
+            if fournisseur_name:
+                fournisseur = Fournisseur.query.filter_by(nom=fournisseur_name).first()
+
+            # Look for existing product by reference
+            produit = Produit.query.filter_by(reference=ref).first()
+            if produit:
+                # Update fields
+                produit.nom = nom
+                if data.get('description') is not None:
+                    produit.description = data.get('description')
+                if prix_achat:
+                    produit.prix_achat = prix_achat
+                if prix_vente:
+                    produit.prix_vente = prix_vente
+                if data.get('tva'):
+                    try:
+                        produit.tva = float(data.get('tva'))
+                    except Exception:
+                        pass
+                if data.get('stock_actuel'):
+                    try:
+                        produit.stock_actuel = int(float(data.get('stock_actuel')))
+                    except Exception:
+                        pass
+                if data.get('stock_min'):
+                    try:
+                        produit.stock_min = int(float(data.get('stock_min')))
+                    except Exception:
+                        pass
+                if categorie:
+                    produit.categorie_id = categorie.id
+                if fournisseur:
+                    produit.fournisseur_id = fournisseur.id
+                if data.get('unite_mesure'):
+                    produit.unite_mesure = data.get('unite_mesure')
+                if data.get('emplacement'):
+                    produit.emplacement = data.get('emplacement')
+                if data.get('actif') is not None:
+                    actif_val = str(data.get('actif')).lower()
+                    produit.actif = actif_val in ['1', 'true', 'oui', 'yes']
+
+                db.session.add(produit)
+                updated += 1
+            else:
+                # Create new product
+                try:
+                    p = Produit(
+                        reference=ref,
+                        nom=nom,
+                        description=data.get('description') or None,
+                        prix_achat=prix_achat or 0.0,
+                        prix_vente=prix_vente or 0.0,
+                        tva=float(data.get('tva')) if data.get('tva') else 0.0,
+                        stock_actuel=int(float(data.get('stock_actuel'))) if data.get('stock_actuel') else 0,
+                        stock_min=int(float(data.get('stock_min'))) if data.get('stock_min') else 0,
+                        unite_mesure=data.get('unite_mesure') or None,
+                        emplacement=data.get('emplacement') or None,
+                        actif=(str(data.get('actif')).lower() in ['1', 'true', 'oui', 'yes']) if data.get('actif') is not None else True,
+                    )
+
+                    if categorie:
+                        p.categorie_id = categorie.id
+                    if fournisseur:
+                        p.fournisseur_id = fournisseur.id
+
+                    db.session.add(p)
+                    created += 1
+                except Exception as e:
+                    errors.append({'row': row_num, 'error': str(e)})
+
+        # Determine type
+        if filename.endswith('.csv'):
+            import csv
+            import io
+            stream = io.TextIOWrapper(file.stream, encoding='utf-8')
+            reader = csv.DictReader(stream)
+            for i, row in enumerate(reader, start=2):
+                process_row(row, row_num=i)
+
+        elif filename.endswith('.xlsx') or filename.endswith('.xls'):
+            wb = openpyxl.load_workbook(filename=BytesIO(file.read()), data_only=True)
+            ws = wb.active
+            # read header
+            rows = list(ws.rows)
+            if not rows:
+                return jsonify({'error': 'Fichier Excel vide'}), 400
+            headers = [str(cell.value).strip() if cell.value is not None else '' for cell in rows[0]]
+            for idx, row in enumerate(rows[1:], start=2):
+                row_values = [cell.value for cell in row]
+                row_dict = {headers[i].strip().lower(): (row_values[i] if row_values[i] is not None else '') for i in range(len(headers))}
+                process_row(row_dict, row_num=idx)
+
+        else:
+            return jsonify({'error': 'Format de fichier non supporté. Utilisez CSV ou XLSX.'}), 400
+
+        # Commit once
+        try:
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({'error': 'Erreur en sauvegardant en base: ' + str(e)}), 500
+
+        return jsonify({'success': True, 'created': created, 'updated': updated, 'errors': errors, 'message': f'Import terminé. Créés: {created}, Mis à jour: {updated}'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Erreur import produits: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @api_bp.route('/export/facture/<int:vente_id>', methods=['GET'])
 @login_required

@@ -3,7 +3,7 @@ from flask_login import login_required, current_user
 from sqlalchemy import func
 from models import db, User, Fournisseur  # Ajouter cette ligne
 from datetime import datetime, timedelta
-from models import Vente, Produit, Client, Categorie, VenteItem, Commande
+from models import Vente, Produit, Client, Categorie, VenteItem, Commande, Depense
 import json
 
 statistiques_bp = Blueprint('statistiques', __name__)
@@ -322,6 +322,71 @@ def rapport_rentabilite():
                 'marge_brute': 0
             },
             'top_rentables': []
+        }), 500
+
+@statistiques_bp.route('/api/stats/depenses')
+@login_required
+def stats_depenses():
+    """Récupère le total des dépenses avec filtrage par période"""
+    try:
+        periode = request.args.get('periode', 'mois')
+        now = datetime.now()
+
+        # Calcul de la période
+        if periode == 'jour':
+            debut = datetime(now.year, now.month, now.day)
+        elif periode == 'semaine':
+            debut = now - timedelta(days=now.weekday())
+        elif periode == 'mois':
+            debut = datetime(now.year, now.month, 1)
+        elif periode == 'annee':
+            debut = datetime(now.year, 1, 1)
+        else:
+            debut = datetime(now.year, now.month, 1)
+
+        # Total des dépenses pour la période
+        total_depenses = db.session.query(func.sum(Depense.montant)).filter(
+            Depense.date >= debut
+        ).scalar() or 0
+
+        # Nombre de dépenses
+        nb_depenses = db.session.query(func.count(Depense.id)).filter(
+            Depense.date >= debut
+        ).scalar() or 0
+
+        # Détail des dépenses
+        depenses_list = db.session.query(
+            Depense.id,
+            Depense.libelle,
+            Depense.montant,
+            Depense.date
+        ).filter(
+            Depense.date >= debut
+        ).order_by(Depense.date.desc()).all()
+
+        depenses_detail = [
+            {
+                'id': d.id,
+                'libelle': d.libelle,
+                'montant': round(d.montant, 2),
+                'date': d.date.strftime('%Y-%m-%d %H:%M') if d.date else ''
+            }
+            for d in depenses_list
+        ]
+
+        return jsonify({
+            'total_depenses': round(total_depenses, 2),
+            'nb_depenses': nb_depenses,
+            'depenses': depenses_detail
+        })
+
+    except Exception as e:
+        print(f"❌ Erreur stats dépenses: {e}")
+        return jsonify({
+            'total_depenses': 0,
+            'nb_depenses': 0,
+            'depenses': [],
+            'error': str(e)
         }), 500
  
 @statistiques_bp.route('/api/stats/clients')

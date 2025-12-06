@@ -5,156 +5,145 @@
 {% block content %}
 <div class="header">
     <h1>⚙️ Paramètres Système</h1>
-    <p>Configuration de l'application</p>
+    <p>Configuration de l'application GestioStock</p>
 </div>
 
-<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-    <!-- Informations entreprise -->
-    <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-        <h3 style="margin-bottom: 20px;">🏢 Informations Entreprise</h3>
-        <form id="form-entreprise">
-            <div class="form-group">
-                <label>Nom de l'entreprise</label>
-                <input type="text" id="param-nom-entreprise" value="GestioStock SARL">
-            </div>
-            <div class="form-group">
-                <label>Adresse</label>
-                <textarea id="param-adresse" rows="2">Ouagadougou, Burkina Faso</textarea>
-            </div>
-            <div class="form-row">
+<!-- Navigation par onglets -->
+<div style="background: white; border-bottom: 1px solid #e0e0e0; margin-bottom: 20px; border-radius: 12px 12px 0 0; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <div style="display: flex; gap: 20px; padding: 15px 25px; flex-wrap: wrap;">
+        <button class="tab-btn active" onclick="switchTab('general')" style="border-bottom: 3px solid #3498db;">⚙️ Général</button>
+        <button class="tab-btn" onclick="switchTab('categories')" style="border-bottom: 3px solid transparent;">📂 Catégories</button>
+        <button class="tab-btn" onclick="switchTab('users')" style="border-bottom: 3px solid transparent;">👥 Utilisateurs</button>
+        <button class="tab-btn" onclick="switchTab('actions')" style="border-bottom: 3px solid transparent;">🛠️ Actions</button>
+    </div>
+</div>
+
+<!-- TAB 1: Général -->
+<div id="tab-general" class="tab-content">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <!-- Informations entreprise -->
+        <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+            <h3 style="margin-bottom: 20px;">🏢 Informations Entreprise</h3>
+            <form id="form-entreprise" onsubmit="saveEnterprise(event)">
                 <div class="form-group">
-                    <label>Téléphone</label>
-                    <input type="tel" id="param-telephone" value="70000000">
+                    <label>Nom de l'entreprise</label>
+                    <input type="text" name="nom_entreprise" id="param-nom-entreprise" placeholder="Ex: GestioStock SARL" required>
                 </div>
                 <div class="form-group">
-                    <label>Email</label>
-                    <input type="email" id="param-email" value="contact@gestiostock.bf">
+                    <label>Adresse</label>
+                    <textarea name="adresse" id="param-adresse" rows="2" placeholder="Ex: Ouagadougou, Burkina Faso"></textarea>
                 </div>
-            </div>
-            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
-        </form>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Téléphone</label>
+                        <input type="tel" name="telephone" id="param-telephone" placeholder="Ex: 70000000">
+                    </div>
+                    <div class="form-group">
+                        <label>Email</label>
+                        <input type="email" name="email" id="param-email" placeholder="Ex: contact@gestiostock.bf">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+            </form>
+        </div>
+        
+        <!-- Paramètres généraux -->
+        <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+            <h3 style="margin-bottom: 20px;">🔧 Paramètres Généraux</h3>
+            <form id="form-parametres" onsubmit="saveGeneralParams(event)">
+                <div class="form-group">
+                    <label>Devise principale</label>
+                    <select name="devise" id="param-devise" required>
+                        <option value="XOF">F CFA (XOF)</option>
+                        <option value="EUR">Euro (EUR)</option>
+                        <option value="USD">Dollar (USD)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>TVA par défaut (%)</label>
+                    <input type="number" name="tva" id="param-tva" value="18" step="0.01" min="0" max="100">
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" name="alertes_stock" id="param-alertes" checked>
+                        <span>Activer les alertes de stock</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" name="emails_auto" id="param-emails" checked>
+                        <span>Envoyer des emails automatiques</span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
+            </form>
+        </div>
     </div>
-    
-    <!-- Paramètres généraux -->
-    <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-        <h3 style="margin-bottom: 20px;">🔧 Paramètres Généraux</h3>
-        <form id="form-parametres">
-            <div class="form-group">
-                <label>Devise principale</label>
-                <select id="param-devise">
-                    <option value="XOF">F CFA (XOF)</option>
-                    <option value="EUR">Euro (EUR)</option>
-                    <option value="USD">Dollar (USD)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label>TVA par défaut (%)</label>
-                <input type="number" id="param-tva" value="18" step="0.01">
-            </div>
-            <div class="form-group">
-                <label style="display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" id="param-alertes" checked>
-                    <span>Activer les alertes de stock</span>
-                </label>
-            </div>
-            <div class="form-group">
-                <label style="display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" id="param-emails" checked>
-                    <span>Envoyer des emails automatiques</span>
-                </label>
-            </div>
-            <button type="submit" class="btn btn-primary">💾 Enregistrer</button>
-        </form>
-    </div>
-    
-    <!-- Gestion des catégories -->
+</div>
+
+<!-- TAB 2: Catégories -->
+<div id="tab-categories" class="tab-content" style="display: none;">
     <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <h3>📂 Catégories de Produits</h3>
-            <button class="btn btn-primary btn-sm" onclick="toggleModal('modal-categorie')">➕ Ajouter</button>
+            <button class="btn btn-primary btn-sm" onclick="toggleModal('modal-categorie')">➕ Ajouter Catégorie</button>
         </div>
         <div id="categories-list"></div>
     </div>
-    
-    <!-- Gestion des utilisateurs -->
+</div>
+
+<!-- TAB 3: Utilisateurs -->
+<div id="tab-users" class="tab-content" style="display: none;">
     <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h3>👥 Utilisateurs</h3>
-            <button class="btn btn-primary btn-sm" onclick="toggleModal('modal-utilisateur')">➕ Ajouter</button>
+            <h3>👥 Gestion des Utilisateurs</h3>
+            <button class="btn btn-primary btn-sm" onclick="toggleModal('modal-utilisateur')">➕ Ajouter Utilisateur</button>
         </div>
-        <div id="users-list">
-            <div style="padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong>{{ current_user.prenom }} {{ current_user.nom }}</strong>
-                        <span class="badge badge-success" style="margin-left: 10px;">{{ current_user.role|upper }}</span>
-                    </div>
-                    <span style="font-size: 12px; color: #7f8c8d;">{{ current_user.email }}</span>
+        
+        <!-- Utilisateur courant -->
+        <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #3498db;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <strong style="font-size: 16px;">{{ current_user.prenom }} {{ current_user.nom }}</strong>
+                    <span class="badge badge-success" style="margin-left: 10px;">{{ current_user.role|upper }}</span>
                 </div>
+                <span style="font-size: 12px; color: #7f8c8d;">{{ current_user.email }}</span>
             </div>
-            <div id="other-users"></div>
         </div>
+        
+        <!-- Autres utilisateurs -->
+        <div id="users-list"></div>
     </div>
 </div>
 
-<!-- Actions système -->
-<div style="background: white; padding: 25px; border-radius: 12px; margin-top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-    <h3 style="margin-bottom: 20px;">🛠️ Actions Système</h3>
-    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-        <button class="btn btn-secondary" id="btn-export-all">
-            📥 Exporter toutes les données
-        </button>
-        <button class="btn btn-warning" id="btn-clean-notifications">
-            🗑️ Nettoyer les notifications
-        </button>
-        <button class="btn btn-danger" id="btn-reset-db">
-            ⚠️ Réinitialiser la base de données
-        </button>
-    </div>
-</div>
-
-<!-- Ajouter cette section après "Actions Système" -->
-<div style="background: white; padding: 25px; border-radius: 12px; margin-top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-    <h3 style="margin-bottom: 20px;">🚀 Contrôle du Serveur</h3>
-    
-    <!-- Statut du système -->
-    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-        <div style="font-weight: bold;">Statut:</div>
-        <div id="system-status" style="padding: 5px 12px; border-radius: 20px; background: #28a745; color: white; font-size: 12px;">
-            🔍 Vérification...
+<!-- TAB 4: Actions -->
+<div id="tab-actions" class="tab-content" style="display: none;">
+    <div style="display: grid; gap: 20px;">
+        <!-- Actions de maintenance -->
+        <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+            <h3 style="margin-bottom: 20px;">🛠️ Actions de Maintenance</h3>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <button class="btn btn-secondary" id="btn-export-all" onclick="exporterToutesDonnees()">
+                    📥 Exporter toutes les données
+                </button>
+                <button class="btn btn-info" id="btn-export-backup" onclick="exportBackup()">
+                    � Sauvegarder la base
+                </button>
+                <button class="btn btn-warning" id="btn-clean-notifications" onclick="nettoyerNotifications()">
+                    🗑️ Nettoyer les notifications
+                </button>
+            </div>
         </div>
-        <div id="system-info" style="margin-left: auto; font-size: 12px; color: #666;"></div>
-    </div>
 
-    <!-- Boutons de contrôle -->
-    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-        <button class="btn btn-success" onclick="controlSystem('start')" id="btn-start">
-            ▶️ Démarrer le Serveur
-        </button>
-        <button class="btn btn-warning" onclick="controlSystem('restart')" id="btn-restart">
-            🔄 Redémarrer
-        </button>
-        <button class="btn btn-danger" onclick="controlSystem('stop')" id="btn-stop">
-            ⏹️ Arrêter
-        </button>
-        <button class="btn btn-info" onclick="refreshSystemStatus()" id="btn-refresh">
-            🔃 Actualiser
-        </button>
-    </div>
-
-    <!-- Logs système -->
-    <div style="margin-top: 20px;">
-        <h4 style="margin-bottom: 10px;">📝 Journal du Système</h4>
-        <div id="system-logs" style="background: #1a1a1a; color: #00ff00; padding: 15px; border-radius: 8px; height: 150px; overflow-y: auto; font-family: 'Courier New', monospace; font-size: 12px;">
-            <div>> Système initialisé...</div>
-        </div>
-        <div style="margin-top: 10px; display: flex; gap: 10px;">
-            <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
-                🗑️ Effacer les logs
-            </button>
-            <button class="btn btn-sm btn-outline-secondary" onclick="exportLogs()">
-                📥 Exporter logs
-            </button>
+        <!-- Actions dangereuses -->
+        <div style="background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); border-left: 4px solid #e74c3c;">
+            <h3 style="margin-bottom: 20px; color: #e74c3c;">⚠️ Actions Dangereuses</h3>
+            <p style="color: #7f8c8d; margin-bottom: 15px;">Ces actions peuvent affecter vos données. Utilisez-les avec prudence.</p>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <button class="btn btn-danger" id="btn-reset-db" onclick="reinitialiserBaseDeDonnees()">
+                    ⚠️ Réinitialiser la base de données
+                </button>
+            </div>
         </div>
     </div>
 </div>

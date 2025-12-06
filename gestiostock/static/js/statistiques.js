@@ -524,6 +524,7 @@ function createClientsChart(data) {
 // Charger l'analyse de rentabilité
 async function chargerRentabilite() {
     try {
+        // Récupérer les données de rentabilité
         const respRent = await fetch('/api/rapport/rentabilite');
         if (!respRent.ok) {
             throw new Error(`Erreur rentabilité: ${respRent.status}`);
@@ -532,7 +533,16 @@ async function chargerRentabilite() {
         const dataRent = await respRent.json();
         console.log("💹 Données rentabilité:", dataRent);
         
-        updateRentabilityData(dataRent);
+        // Récupérer les dépenses
+        const respDepenses = await fetch('/api/stats/depenses?periode=mois');
+        if (!respDepenses.ok) {
+            throw new Error(`Erreur dépenses: ${respDepenses.status}`);
+        }
+        
+        const dataDepenses = await respDepenses.json();
+        console.log("💰 Données dépenses:", dataDepenses);
+        
+        updateRentabilityData(dataRent, dataDepenses);
         
     } catch (error) {
         console.error('❌ Erreur rentabilité:', error);
@@ -541,14 +551,20 @@ async function chargerRentabilite() {
 }
 
 // Mettre à jour les données de rentabilité
-function updateRentabilityData(data) {
+function updateRentabilityData(data, dataDepenses) {
     const resume = data.resume || {};
+    const totalDepenses = dataDepenses?.total_depenses || 0;
+    const beneficeNet = resume.benefice_brut - totalDepenses;
     
     document.getElementById('rent-ca').textContent = formatCurrency(resume.ca_total || 0);
     document.getElementById('rent-cout').textContent = formatCurrency(resume.cout_total || 0);
     document.getElementById('rent-benefice').textContent = formatCurrency(resume.benefice_brut || 0);
     document.getElementById('rent-marge-pct').textContent = formatPercent(resume.marge_brute || 0);
     document.getElementById('stat-marge').textContent = formatPercent(resume.marge_brute || 0);
+    
+    // Afficher les dépenses et bénéfice net
+    document.getElementById('rent-depenses').textContent = formatCurrency(totalDepenses);
+    document.getElementById('rent-benefice-net').textContent = formatCurrency(beneficeNet);
     
     // Produits les plus rentables
     const topRentables = Array.isArray(data.top_rentables) ? data.top_rentables : [];
